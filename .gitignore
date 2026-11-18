@@ -1,0 +1,14 @@
+.local-data/
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+*.dpapi
+*.pem
+*.key
+# Working project folders are private; publish only the clean starter instructions.
+projects/*
+!projects/hello-windows/
+projects/hello-windows/*
+!projects/hello-windows/README.md
