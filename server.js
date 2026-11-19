@@ -132,7 +132,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/health') return json(res,{app:'forge-local',ok:true});
     if(!url.pathname.startsWith('/api/')) {
       if(req.method!=='GET') return json(res,{error:'Method not allowed.'},405);
-      const files={'/':'index.html','/app.js':'app.js','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
+      const files={'/':'index.html','/app.js':'app.js','/chat-scroll.js':'chat-scroll.js','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
       const file=files[url.pathname]; if(!file) return json(res,{error:'Not found.'},404);
       res.setHeader('Set-Cookie',`forge_session=${sessionCookie}; HttpOnly; SameSite=Strict; Path=/`);
       res.setHeader('Content-Type',file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'image/svg+xml');

@@ -3,6 +3,7 @@ import { VoiceInput, DictationDraft } from './voice-input.js';
 import { LiveTranscription } from './live-transcription.js';
 import { microphoneMeter } from './microphone-meter.js';
 import { VoiceWaveform } from './voice-waveform.js';
+import { ChatScroll } from './chat-scroll.js';
 const $ = id => document.getElementById(id);
 let state, activeRun = null, events = null, approval = null, streamBubble = null, file = null, dirty = false, changes = [], toastTimer;
 let goalPresets=[];
@@ -18,6 +19,7 @@ function toast(text,error=false) {
   $('toast').textContent=text; $('toast').className='toast'+(error?' error':''); clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.add('hidden'),6500);
 }
 const action = fn => async event => { try { await fn(event); } catch(e) {toast(e.message,true);} };
+const chatScroll=new ChatScroll($('messages'),$('jumpToLatest'));
 const speechDraft=new DictationDraft(),waveform=new VoiceWaveform($('voiceWaveform'));
 let voiceNotice='';
 function applySpeech(result){if(!result)return;$('prompt').value=result.value;$('prompt').setSelectionRange(result.caret,result.caret);$('prompt').scrollTop=$('prompt').scrollHeight;}
@@ -120,21 +122,23 @@ function message(role,text) {
   heading.append(avatar,document.createTextNode(role==='user'?'YOU':'DEV LAB'));
   const body=document.createElement('div');body.className='message-body';
   if(role==='assistant')markdown(body,text);else body.textContent=text;
-  row.append(heading,body);$('messages').append(row); scrollChat(); return {row,body,text};
+  row.append(heading,body);chatScroll.update(()=>$('messages').append(row));return {row,body,text};
 }
 function toolResult(row,result,root,command) {
   if(!result)return;
   const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');
   details.className='tool-details';summary.textContent=result.exitCode!==undefined?'View result · PowerShell exit '+result.exitCode:'View tool result';
   pre.textContent=(root?'Project: '+root+'\n':'')+(command?'PS > '+command+'\n\n':'')+(typeof result.output==='string'?result.output:JSON.stringify(result,null,2));
-  details.append(summary,pre);row.append(details);
+  details.append(summary,pre);chatScroll.update(()=>row.append(details));
 }
-function toolLine(text,error=false,result=null,root='',command='') {const el=document.createElement('div');el.className='tool-row'+(error?' error':'');el.textContent=text;toolResult(el,result,root,command);$('messages').append(el);scrollChat();return el;}
-function scrollChat() {$('messages').scrollTop=$('messages').scrollHeight;}
-function renderMessages(session) {
+function toolLine(text,error=false,result=null,root='',command='') {const el=document.createElement('div');el.className='tool-row'+(error?' error':'');el.textContent=text;toolResult(el,result,root,command);chatScroll.update(()=>$('messages').append(el));return el;}
+function renderMessages(session,{reset=false}={}) {
+  const render=()=>{
   if(!session?.messages.length) { $('welcome').classList.remove('hidden'); for(const row of [...$('messages').children]) if(row.id!=='welcome')row.remove();return; }
   $('welcome').classList.add('hidden');for(const row of [...$('messages').children])if(row.id!=='welcome')row.remove();
   for(const m of session.messages) {if(m.role==='tool'){const row=toolLine(m.content,!!m.error,m.result,m.root,m.command);if(m.id)row.dataset.toolId=m.id;}else message(m.role,m.content);}
+  };
+  if(reset)chatScroll.reset(render);else chatScroll.update(render);
 }
 async function loadState({render=true}={}) {
   const previousSession=state?.activeSessionId;
@@ -152,7 +156,7 @@ async function loadState({render=true}={}) {
     const b=document.createElement('button');b.className='session-item'+(s.id===session?.id?' active':'');b.textContent='◦  '+s.title;b.title=s.root;
     b.addEventListener('click',action(async()=>{if(!canDiscard())return;await api('session',{id:s.id});clearEditor();await loadState();await refreshFiles();await refreshChanges();}));$('sessions').append(b);
   }
-  if(render)renderMessages(session);
+  if(render)renderMessages(session,{reset:previousSession!==state.activeSessionId});
   renderGoal();
   if(state.run&&!activeRun) connectRun(state.run.id);
   else if(!activeRun)setBusy(false);
@@ -217,8 +221,8 @@ function connectRun(id) {
   if(events)events.close();events=new EventSource('/api/events?id='+encodeURIComponent(id));
   const on=(type,fn)=>events.addEventListener(type,event=>{try{fn(JSON.parse(event.data));}catch(e){toast(e.message,true);}});
   on('status',data=>setBusy(true,data.text));
-  on('delta',data=>{if(!streamBubble)streamBubble=message('assistant','');streamBubble.text+=data.text;streamBubble.body.textContent=streamBubble.text;scrollChat();});
-  on('message',data=>{if(streamBubble){streamBubble.text=data.text;markdown(streamBubble.body,data.text);}else message('assistant',data.text);streamBubble=null;});
+  on('delta',data=>chatScroll.update(()=>{if(!streamBubble)streamBubble=message('assistant','');streamBubble.text+=data.text;streamBubble.body.textContent=streamBubble.text;}));
+  on('message',data=>chatScroll.update(()=>{if(streamBubble){streamBubble.text=data.text;markdown(streamBubble.body,data.text);}else message('assistant',data.text);streamBubble=null;}));
   on('tool',data=>{const details=data.args?.path||data.args?.query||data.args?.reason||'';const row=toolLine('› '+data.name.replaceAll('_',' ')+'  '+details);row.dataset.toolId=data.id;row.dataset.command=data.args?.command||'';});
   on('tool_result',data=>{const row=[...document.querySelectorAll('[data-tool-id]')].find(el=>el.dataset.toolId===data.id);if(row)toolResult(row,data.result,$('activeProjectPath').value,row.dataset.command);if(data.result?.error)toolLine(data.result.error,true);if(data.name==='run_powershell'&&data.result?.denied)terminal('Command declined.');});
   on('approval',data=>{approval=data;$('approvalReason').textContent=data.reason;$('approvalCommand').textContent=data.command;$('approvalCwd').textContent=data.cwd;$('approval').classList.remove('hidden');terminal('\nPS > '+data.command);setBusy(true,'Waiting for your command approval');});

@@ -4,7 +4,7 @@ An experimental Windows coding-agent starter for exploring the OpenAI API with y
 
 ## Project status
 
-Early development preview. Thirty-nine automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
+Early development preview. Forty-five automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
 
 ## Start
 
@@ -27,6 +27,10 @@ Open the included starter project and try:
 > Build a responsive task tracker with plain HTML, CSS, and JavaScript. Save tasks in browser localStorage. Add instructions for launching it on Windows. Verify the JavaScript syntax.
 
 The agent inspects files, makes edits, requests commands, and uses command results to continue working. You can inspect files in the editor, make your own edits, start a fresh chat, and return to previous project chats.
+
+## Reading streamed answers
+
+The conversation follows new text while you are at the bottom. Scrolling up with the wheel, scrollbar, keyboard, or touch pauses that behavior, so additional words and tool results do not move your reading position. Finishing an answer also preserves the position when the conversation redraws. Click **Jump to latest** or scroll back down to the bottom to resume following. Opening another chat starts at its latest messages.
 
 ## Open projects from chat
 
