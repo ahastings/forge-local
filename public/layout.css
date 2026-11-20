@@ -1,0 +1,68 @@
+/* Keep conversation space available, including at high browser zoom. */
+.shell{min-height:0;--sidebar-width:235px;--editor-width:360px;--terminal-height:150px;--composer-height:58px}
+.main{min-height:0;overflow-y:auto;overflow-x:hidden}
+.topbar{height:52px;min-height:52px;padding:0 18px}
+.breadcrumb{align-items:center;gap:9px;flex:1;min-width:0}
+.breadcrumb #taskTitle{max-width:none;min-width:0}
+.top-actions{gap:8px;flex-shrink:0}.layout-button{white-space:nowrap}
+#toggleSidebar{font-size:17px;padding:5px 7px;flex-shrink:0}
+#resetLayout{font-size:19px;padding:4px 7px}
+.project-path-bar{margin:8px 18px 0;padding:5px 9px;min-height:34px}
+.goal-panel{margin:8px 18px 0;padding:7px 10px;max-height:none;overflow:visible;flex-shrink:0}
+.goal-heading{gap:9px;min-height:27px}
+.goal-heading strong{font-size:12px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.goal-heading>div{overflow:hidden}.goal-heading .eyebrow{display:none}
+.goal-status{flex-shrink:0}.goal-heading button{flex-shrink:0;font-size:11px;padding:5px 9px}
+#goalDetailsDialog{width:min(720px,calc(100vw - 30px));max-height:85dvh;padding:20px}
+#goalDetailsDialog[open]{display:flex;flex-direction:column}
+#goalDetailsDialog .dialog-heading{flex-shrink:0;margin-bottom:12px}
+.goal-details-body{overflow:auto;min-height:0;padding-right:6px;font-size:14px;line-height:1.7}
+.goal-details-body h3{font-size:17px;margin:0 0 12px}.goal-details-body .goal-summary{font-size:14px;line-height:1.7}
+.goal-details-body details{margin:14px 0}.goal-details-body li{margin:10px 0}.goal-details-body small{font-size:12px;color:var(--muted)}
+.workspace{position:relative;min-height:360px;flex-shrink:0}
+.conversation{min-height:0;padding:14px 18px 0;overflow:hidden}
+.conversation-heading{margin-bottom:10px;flex-shrink:0;gap:8px}
+.chat-stream{min-height:160px}.messages{padding-right:9px;scrollbar-width:auto}
+.message{font-size:14px;line-height:1.8;padding:16px 4px}
+.composer{margin-top:10px;position:relative}.composer textarea{height:var(--composer-height);min-height:44px;max-height:180px;padding:9px 13px 5px;resize:none}
+.composer-bottom{padding:0 9px 8px}.composer-meta{margin:6px 0 8px;flex-shrink:0}
+.sidebar{width:var(--sidebar-width);min-width:0;padding:18px 12px 0}
+.brand{margin-bottom:20px}.new-task{margin-bottom:20px}.sidebar-collapsed>.sidebar,.sidebar-collapsed>#sidebarResize{display:none}
+.panel-resizer{flex-shrink:0;position:relative;background:transparent;touch-action:none;outline:none;z-index:3}
+.panel-resizer::after{content:'';position:absolute;background:#5c7963;border-radius:4px;opacity:.45}
+.panel-resizer:hover,.panel-resizer:focus-visible{background:#b9f5bb18}
+.panel-resizer:hover::after,.panel-resizer:focus-visible::after{opacity:1;background:var(--mint)}
+.vertical-resizer{width:7px;cursor:col-resize}.vertical-resizer::after{width:2px;height:38px;top:50%;left:2px;transform:translateY(-50%)}
+.horizontal-resizer{height:7px;width:100%;cursor:row-resize}.horizontal-resizer::after{height:2px;width:38px;left:50%;top:2px;transform:translateX(-50%)}
+#composerResize{height:6px;border-radius:9px 9px 0 0}
+.resizing,.resizing *{user-select:none!important}.resizing iframe{pointer-events:none}
+.workspace .inspector{display:flex;width:var(--editor-width);position:relative;inset:auto;flex-shrink:0;margin:0;min-height:0;box-shadow:none}
+.inspector-tabs{height:40px;min-height:40px;gap:12px;align-items:stretch}.inspector-tabs #closeInspector{margin-left:auto;font-size:22px;min-width:28px;padding:0 4px}
+.editor-toolbar{flex-shrink:0}.editor-status{flex-shrink:0}.editor-empty{min-height:0}.editor-empty>span{margin-bottom:10px}
+.terminal{position:relative}.terminal-heading{padding:8px 18px;min-height:32px}.terminal-heading>span:last-child{font-size:14px}
+.terminal .terminal-body{height:var(--terminal-height);display:flex;flex-direction:column;min-height:80px;padding:0 18px 8px}
+.terminal .terminal-body>pre{height:auto;flex:1;min-height:0;margin:5px 0;font-size:12px}
+.terminal form{flex-shrink:0}.bottom-bar{padding:5px 12px;flex-shrink:0}
+.focus-chat>.sidebar,.focus-chat>#sidebarResize,.focus-chat #projectPathForm,.focus-chat #goalPanel,.focus-chat .inspector,.focus-chat #editorResize,.focus-chat .terminal,.focus-chat .bottom-bar{display:none!important}
+.focus-chat .conversation{padding:14px clamp(16px,5vw,100px) 0}.focus-chat .workspace{min-height:340px}
+.focus-chat .connection-banner{margin:8px 18px 0}
+@media(max-width:1000px){
+  .workspace .inspector{position:absolute;right:0;top:0;bottom:0;width:min(var(--editor-width),calc(100% - 12px));z-index:5;border:1px solid #46614c;box-shadow:-12px 0 35px #0008}
+  #editorResize{display:none}
+}
+@media(max-width:720px){
+  .sidebar{width:57px;padding:18px 6px 0}#sidebarResize{display:none}
+  .brand>span,.project-button>span:not(:first-child),.new-task kbd,.section-label,.session-list,.file-tree,.sidebar-bottom,.project-button small{display:none}
+  .brand{margin:0 5px 18px}.brand img{width:32px;height:32px}.project-button{padding:5px 7px;border:0;background:transparent}.new-task{font-size:0;justify-content:center;border:0}.new-task>span{font-size:25px}
+  .topbar{padding:0 9px}.top-actions{gap:3px}.quiet-button>span,.local-badge{display:none}
+  .project-path-bar{margin:6px 10px 0}.goal-panel{margin:6px 10px 0}.conversation{padding:10px 10px 0}
+  .goal-heading strong{font-size:11px}.goal-heading button{font-size:10px;padding:4px 6px}.goal-status{font-size:8px}.goal-heading{gap:5px}
+  .message{font-size:14px}.terminal-heading{padding:8px 10px}.terminal .terminal-body{padding:0 10px 8px}
+  .connection-banner{margin:8px 10px 0}
+}
+@media(max-height:720px){
+  .topbar{height:44px;min-height:44px}.project-path-bar{min-height:30px;padding-top:3px;padding-bottom:3px}
+  .goal-panel{padding:5px 9px}.goal-heading{min-height:24px}
+  .conversation{padding-top:9px}.conversation-heading{margin-bottom:7px}.eyebrow{font-size:8px}.run-state{margin-top:4px}
+  .workspace{min-height:340px}.composer{margin-top:7px}.composer-meta{margin:4px 0 6px}.bottom-bar{display:none}
+}

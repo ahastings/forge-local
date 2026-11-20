@@ -4,7 +4,7 @@ An experimental Windows coding-agent starter for exploring the OpenAI API with y
 
 ## Project status
 
-Early development preview. Forty-five automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
+Early development preview. Fifty automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
 
 ## Start
 
@@ -27,6 +27,14 @@ Open the included starter project and try:
 > Build a responsive task tracker with plain HTML, CSS, and JavaScript. Save tasks in browser localStorage. Add instructions for launching it on Windows. Verify the JavaScript syntax.
 
 The agent inspects files, makes edits, requests commands, and uses command results to continue working. You can inspect files in the editor, make your own edits, start a fresh chat, and return to previous project chats.
+
+## Adjust the workspace
+
+Saved goals use one compact row. Details opens the objective and completion checks in a separate scrollable dialog, leaving the conversation height intact. The empty file panel and PowerShell output start closed.
+
+Drag the grips between the sidebar and chat, between the chat and file panel, above PowerShell output, or above the message box to resize those areas. Double-click a grip to reset its size. Focused grips also support arrow keys (Shift for larger steps) and Home/End. Panel sizes and visibility are saved in this browser and clamped to the current window size.
+
+Use **Files & changes** to show or hide the editor and **×** inside it to close it. Click the PowerShell bar to expand or collapse output. The sidebar button hides or restores the file/task list. **Focus chat** hides the surrounding panels for reading; **Exit focus** restores them. **Reset layout** restores the default sizes and closes optional panels without changing chats, project files, API settings or saved goals. Small windows use an editor overlay with a close button, and the main workspace can scroll instead of clipping the response.
 
 ## Reading streamed answers
 

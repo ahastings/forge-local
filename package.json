@@ -1,9 +1,9 @@
 {
   "name": "local-api-dev-lab",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "description": "A local Windows coding agent powered by the OpenAI Responses API",
   "engines": { "node": ">=22" },
-  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js", "check": "node --check server.js && node --check public/app.js && node --check public/chat-scroll.js && node --check public/voice-input.js && node --check public/live-transcription.js && node --check public/microphone-meter.js && node --check public/voice-waveform.js && node --check lib/transcription.js && node --check lib/live-transcription.js" }
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js", "check": "node --check server.js && node --check public/app.js && node --check public/layout.js && node --check public/chat-scroll.js && node --check public/voice-input.js && node --check public/live-transcription.js && node --check public/microphone-meter.js && node --check public/voice-waveform.js && node --check lib/transcription.js && node --check lib/live-transcription.js" }
 }

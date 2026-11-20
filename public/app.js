@@ -4,10 +4,10 @@ import { LiveTranscription } from './live-transcription.js';
 import { microphoneMeter } from './microphone-meter.js';
 import { VoiceWaveform } from './voice-waveform.js';
 import { ChatScroll } from './chat-scroll.js';
+import { PanelLayout } from './layout.js';
 const $ = id => document.getElementById(id);
 let state, activeRun = null, events = null, approval = null, streamBubble = null, file = null, dirty = false, changes = [], toastTimer;
 let goalPresets=[];
-let presentedGoalId=null;
 const number = n => new Intl.NumberFormat().format(n || 0);
 const basename = p => p?.split(/[\\/]/).filter(Boolean).at(-1) || 'Choose project';
 async function api(route, data) {
@@ -19,6 +19,7 @@ function toast(text,error=false) {
   $('toast').textContent=text; $('toast').className='toast'+(error?' error':''); clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.add('hidden'),6500);
 }
 const action = fn => async event => { try { await fn(event); } catch(e) {toast(e.message,true);} };
+const panels=new PanelLayout();
 const chatScroll=new ChatScroll($('messages'),$('jumpToLatest'));
 const speechDraft=new DictationDraft(),waveform=new VoiceWaveform($('voiceWaveform'));
 let voiceNotice='';
@@ -72,8 +73,7 @@ function usage(value) { $('usageText').textContent=`${number(value?.calls)} API 
 function selectedGoal(){const session=state?.sessions.find(s=>s.id===state.activeSessionId);return state?.goals?.find(g=>g.id===session?.goalId);}
 function renderGoal(goal=selectedGoal()) {
   $('goalPanel').classList.toggle('hidden',!goal);if(!goal)return;
-  if(presentedGoalId!==goal.id){presentedGoalId=goal.id;$('terminalBody').classList.add('hidden');$('terminalArrow').textContent='⌃';}
-  $('goalTitle').textContent=goal.title;$('goalStatus').textContent=goal.status.replaceAll('_',' ');$('goalSummary').textContent=goal.summary;
+  $('goalTitle').textContent=goal.title;$('goalTitle').title=goal.title;$('goalDetailsTitle').textContent=goal.title;$('goalStatus').textContent=goal.status.replaceAll('_',' ');$('goalSummary').textContent=goal.summary;
   $('goalRun').disabled=!!activeRun||goal.status==='complete';$('goalRun').textContent=goal.totalCalls?'Resume goal':'Run goal';$('goalPause').classList.toggle('hidden',goal.status!=='running');
   $('goalNextStep').textContent='Next: '+goal.nextStep;$('goalBudget').textContent=`Up to ${goal.maxCycles} cycles / ${goal.maxCalls} API calls per run · ${goal.totalCalls} calls used by this goal`;
   $('goalCriteria').replaceChildren();for(const c of goal.criteria){const li=document.createElement('li');li.textContent=(c.status==='done'?'✓ ':c.status==='blocked'?'! ':'○ ')+c.text;$('goalCriteria').append(li);}
@@ -184,7 +184,7 @@ async function openFile(relative,{force=false}={}) {
   $('editorStatus').textContent='UTF-8 · Saved on your computer';await refreshFiles();
 }
 function showInspector(tab) {
-  $('inspector').classList.remove('hidden');$('inspector').classList.add('revealed');
+  panels.openEditor();
   $('fileTab').classList.toggle('active',tab==='file');$('changesTab').classList.toggle('active',tab==='changes');$('editorPanel').classList.toggle('hidden',tab!=='file');$('changesPanel').classList.toggle('hidden',tab!=='changes');
 }
 async function refreshChanges() {
@@ -262,6 +262,7 @@ async function submitPrompt() {
 $('chooseProject').onclick=showProject;$('composerProject').onclick=showProject;
 $('settingsButton').onclick=showSettings;$('connectButton').onclick=showSettings;
 $('goalButton').addEventListener('click',action(showGoals));
+$('goalDetailsButton').onclick=()=>$('goalDetailsDialog').showModal();
 $('loadStockGoal').onclick=()=>{if(goalPresets[0])fillGoalForm(goalPresets[0]);};
 $('goalForm').addEventListener('submit',action(async event=>{
   event.preventDefault();const lines=id=>$(id).value.split('\n').map(s=>s.trim()).filter(Boolean);
@@ -296,7 +297,6 @@ $('commandPolicy').addEventListener('change',action(event=>setCommandMode(event.
 $('autoApproveProject').addEventListener('click',action(()=>setCommandMode('auto')));
 $('refreshFiles').addEventListener('click',action(refreshFiles));
 $('fileTab').onclick=()=>showInspector('file');$('changesTab').addEventListener('click',action(async()=>{showInspector('changes');await refreshChanges();}));
-$('toggleInspector').onclick=()=>{const p=$('inspector');if(p.classList.contains('hidden')){p.classList.remove('hidden');p.classList.add('revealed');}else if(innerWidth<=950){p.classList.toggle('revealed');}else p.classList.add('hidden');};
 $('fileContent').addEventListener('input',()=>{dirty=true;$('saveFile').textContent='Save •';$('editorStatus').textContent='Unsaved changes';lineNumbers();});
 $('fileContent').addEventListener('scroll',()=>{$('lineNumbers').scrollTop=$('fileContent').scrollTop;});
 $('fileContent').addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();const t=e.target,start=t.selectionStart,end=t.selectionEnd;t.setRangeText('  ',start,end,'end');t.dispatchEvent(new Event('input'));}});
@@ -305,7 +305,6 @@ $('newFile').onclick=()=>{if(!state.activeSessionId)return showProject();$('newF
 $('newFileForm').addEventListener('submit',action(async e=>{e.preventDefault();if(!canDiscard())return;const relative=$('newFilePath').value.trim();try{file=await api('file?path='+encodeURIComponent(relative));}catch(error){if(!/ENOENT/.test(error.message))throw error;file={path:relative,content:'',hash:null};}
   dirty=false;$('editorPath').textContent=file.path;$('fileContent').value=file.content;$('editorEmpty').classList.add('hidden');$('editorWrap').classList.remove('hidden');$('saveFile').disabled=false;lineNumbers();showInspector('file');$('newFileDialog').close();$('fileContent').focus();
 }));
-$('toggleTerminal').onclick=()=>{const hidden=$('terminalBody').classList.toggle('hidden');$('terminalArrow').textContent=hidden?'⌃':'⌄';};
 $('terminalForm').addEventListener('submit',action(async e=>{e.preventDefault();if(activeRun)return toast('Wait for the active task or stop it first.',true);if(!state.activeSessionId)return showProject();const command=$('terminalCommand').value.trim();if(!command)return;const result=await api('terminal',{command});$('terminalCommand').value='';connectRun(result.id);}));
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('newChat').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(file)$('saveFile').click();}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&voice.active){e.preventDefault();voice.cancel();}});
