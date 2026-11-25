@@ -33,6 +33,7 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   assert.equal((await fetch(origin+'/chat-scroll.js')).status,200);
   assert.equal((await fetch(origin+'/layout.js')).status,200);
   assert.equal((await fetch(origin+'/layout.css')).status,200);
+  assert.equal((await fetch(origin+'/input-limits.js')).status,200);
   assert.equal((await post('voice-session',{sdp:'v=0\nm=audio'},{'X-Forge-Request':''})).status,403);
   assert.match((await (await post('voice-session',{sdp:'v=0\nm=audio'})).json()).error,/API key/);
   const audioPost=(headers={})=>fetch(origin+'/api/transcribe',{method:'POST',headers:{cookie,'X-Forge-Request':'1','Content-Type':'audio/webm',...headers},body:new Uint8Array()});
@@ -50,6 +51,16 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   assert.equal((await post('undo',{id:change.changeId})).status,200);
   await assert.rejects(fs.stat(path.join(project,'app.txt')),/ENOENT/);
   assert.equal((await post('run',{prompt:'Do not call real API in tests.'})).status,400);
+  const longPrompt='x'.repeat(40_000);
+  assert.match((await (await post('run',{prompt:longPrompt})).json()).error,/API key/); // Length accepted, then missing-key check stops the request locally.
+  assert.match((await (await post('run',{prompt:longPrompt+'x'})).json()).error,/40,000 characters.*40,001/);
+  const beforeOversize=(await (await get('state')).json()).activeSessionId;
+  assert.equal((await post('project',{path:project,prompt:longPrompt+'x'})).status,400);
+  assert.equal((await (await get('state')).json()).activeSessionId,beforeOversize);
+  assert.equal((await post('project',{path:project,prompt:longPrompt})).status,200);
+  const longState=await (await get('state')).json();
+  assert.equal(longState.sessions.find(s=>s.id===longState.activeSessionId).messages[0].content,longPrompt);
+  assert.match((await (await post('terminal',{command:'x'.repeat(20_001)})).json()).error,/PowerShell.*20,000/);
   async function command(command,allow,{expectApproval=true,switchToAuto=false,stopOnAutomatic=false}={}) {
     const task=await (await post('terminal',{command})).json();assert.ok(task.id);
     const response=await get('events?id='+task.id);const reader=response.body.getReader();let buffer='',all='',approved=false;

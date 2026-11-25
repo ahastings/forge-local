@@ -9,6 +9,7 @@ import { runAgent } from './lib/agent.js';
 import { makeGoal, recordCheckpoint, pursueGoal } from './lib/goals.js';
 import { readAudio, transcribeAudio } from './lib/transcription.js';
 import { createTranscriptionCall } from './lib/live-transcription.js';
+import { MAX_COMMAND_CHARS, promptText } from './public/input-limits.js';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.FORGE_DATA_DIR || path.join(appDir,'.local-data');
@@ -132,7 +133,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/health') return json(res,{app:'forge-local',ok:true});
     if(!url.pathname.startsWith('/api/')) {
       if(req.method!=='GET') return json(res,{error:'Method not allowed.'},405);
-      const files={'/':'index.html','/app.js':'app.js','/chat-scroll.js':'chat-scroll.js','/layout.js':'layout.js','/layout.css':'layout.css','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
+      const files={'/':'index.html','/app.js':'app.js','/input-limits.js':'input-limits.js','/chat-scroll.js':'chat-scroll.js','/layout.js':'layout.js','/layout.css':'layout.css','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
       const file=files[url.pathname]; if(!file) return json(res,{error:'Not found.'},404);
       res.setHeader('Set-Cookie',`forge_session=${sessionCookie}; HttpOnly; SameSite=Strict; Path=/`);
       res.setHeader('Content-Type',file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'image/svg+xml');
@@ -254,11 +255,12 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/browse') { requireIdle(); return json(res,await browseFolder()); }
     if(url.pathname==='/api/project') {
       requireIdle();
+      const prompt=data.prompt===undefined?null:promptText(data.prompt);
       const root=await projectRoot(data.path);
       const opened=newSession(root);
-      if(typeof data.prompt==='string' && data.prompt.length<=24000) {
+      if(prompt!==null) {
         opened.title='Open '+path.basename(root);
-        opened.messages.push({role:'user',content:data.prompt,time:new Date().toISOString()},{role:'assistant',content:`Opened project: ${root}\n\nThis folder is now active. Project instructions and file contents have not been inspected yet.`,time:new Date().toISOString()});
+        opened.messages.push({role:'user',content:prompt,time:new Date().toISOString()},{role:'assistant',content:`Opened project: ${root}\n\nThis folder is now active. Project instructions and file contents have not been inspected yet.`,time:new Date().toISOString()});
       }
       await save(); return json(res,{ok:true,root,sessionId:opened.id});
     }
@@ -273,8 +275,9 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/run' || url.pathname==='/api/terminal') {
       requireIdle(); if(!session) throw new Error('Choose a project first.');
       const isAgent=url.pathname==='/api/run';
+      const text=isAgent?promptText(data.prompt):String(data.command??'').trim();
+      if(!isAgent && (!text || text.length>MAX_COMMAND_CHARS)) throw new Error(`Enter a PowerShell command of at most ${MAX_COMMAND_CHARS.toLocaleString('en-US')} characters.`);
       if(isAgent && !apiKey) throw new Error('Connect an OpenAI API key in Settings first.');
-      const text=String(isAgent?data.prompt:data.command).trim(); if(!text || text.length>24000) throw new Error('Enter a task or command shorter than 24,000 characters.');
       const task=createRun(isAgent?'agent':'terminal',session); const ws=workspace(session,task);
       if(isAgent) {
         session.messages.push({role:'user',content:text,time:new Date().toISOString()});

@@ -5,6 +5,7 @@ import { microphoneMeter } from './microphone-meter.js';
 import { VoiceWaveform } from './voice-waveform.js';
 import { ChatScroll } from './chat-scroll.js';
 import { PanelLayout } from './layout.js';
+import { MAX_PROMPT_CHARS, promptText } from './input-limits.js';
 const $ = id => document.getElementById(id);
 let state, activeRun = null, events = null, approval = null, streamBubble = null, file = null, dirty = false, changes = [], toastTimer;
 let goalPresets=[];
@@ -23,7 +24,8 @@ const panels=new PanelLayout();
 const chatScroll=new ChatScroll($('messages'),$('jumpToLatest'));
 const speechDraft=new DictationDraft(),waveform=new VoiceWaveform($('voiceWaveform'));
 let voiceNotice='';
-function applySpeech(result){if(!result)return;$('prompt').value=result.value;$('prompt').setSelectionRange(result.caret,result.caret);$('prompt').scrollTop=$('prompt').scrollHeight;}
+function updatePromptCount(){const length=$('prompt').value.trim().length,over=length>MAX_PROMPT_CHARS;$('promptCount').textContent=`${number(length)} / ${number(MAX_PROMPT_CHARS)} chars`;$('promptCount').classList.toggle('over-limit',over);$('prompt').setAttribute('aria-invalid',String(over));}
+function applySpeech(result){if(!result)return;$('prompt').value=result.value;updatePromptCount();$('prompt').setSelectionRange(result.caret,result.caret);$('prompt').scrollTop=$('prompt').scrollHeight;}
 function voiceStatus(text){$('voiceStatus').textContent=text;$('composerHint').textContent=text;$('composerHint').title=voiceNotice||text;}
 const voice = new VoiceInput({
   createLive:options=>new LiveTranscription(options),monitor:microphoneMeter,
@@ -250,14 +252,14 @@ function connectRun(id) {
 async function submitPrompt() {
   if(voice.active)return toast('Finish dictation or cancel it before sending.');
   if(activeRun)return;
-  const prompt=$('prompt').value.trim();if(!prompt)return;
+  if(!$('prompt').value.trim())return;const prompt=promptText($('prompt').value);
   const requestedProject=projectCommand(prompt);
   if(requestedProject) {
     if(!canDiscard())return;
-    await api('project',{path:requestedProject,prompt});$('prompt').value='';clearEditor();await loadState();await refreshFiles();await refreshChanges();terminal('Project opened: '+requestedProject);return;
+    await api('project',{path:requestedProject,prompt});$('prompt').value='';updatePromptCount();clearEditor();await loadState();await refreshFiles();await refreshChanges();terminal('Project opened: '+requestedProject);return;
   }
   if(!state.activeSessionId)return showProject();if(!state.keyConfigured)return showSettings();
-  const result=await api('run',{prompt});$('welcome').classList.add('hidden');message('user',prompt);$('prompt').value='';connectRun(result.id);
+  const result=await api('run',{prompt});$('welcome').classList.add('hidden');message('user',prompt);$('prompt').value='';updatePromptCount();connectRun(result.id);
 }
 $('chooseProject').onclick=showProject;$('composerProject').onclick=showProject;
 $('settingsButton').onclick=showSettings;$('connectButton').onclick=showSettings;
@@ -272,7 +274,7 @@ $('goalForm').addEventListener('submit',action(async event=>{
 $('goalRun').addEventListener('click',action(async()=>{const goal=selectedGoal();if(!goal)return;const result=await api('goal-run',{id:goal.id});connectRun(result.id);renderGoal();}));
 $('goalPause').addEventListener('click',action(async()=>{const goal=selectedGoal();if(goal)await api('goal-pause',{id:goal.id});}));
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
-for(const b of document.querySelectorAll('[data-prompt]'))b.onclick=()=>{voice.cancel();$('prompt').value=b.dataset.prompt;$('prompt').focus();if(!state.activeSessionId)showProject();};
+for(const b of document.querySelectorAll('[data-prompt]'))b.onclick=()=>{voice.cancel();$('prompt').value=b.dataset.prompt;updatePromptCount();$('prompt').focus();if(!state.activeSessionId)showProject();};
 $('projectForm').addEventListener('submit',action(async e=>{e.preventDefault();if(!canDiscard())return;await api('project',{path:$('projectPath').value.trim()});$('projectDialog').close();clearEditor();await loadState();await refreshFiles();await refreshChanges();terminal('Project: '+$('projectPath').value.trim());}));
 $('projectPathForm').addEventListener('submit',action(async e=>{e.preventDefault();if(activeRun)return toast('Wait for the active task or stop it before switching folders.',true);if(!canDiscard())return;await api('project',{path:$('activeProjectPath').value.trim()});clearEditor();await loadState();await refreshFiles();await refreshChanges();toast('Project folder opened.');}));
 $('browseButton').addEventListener('click',action(async()=>{const b=$('browseButton');b.disabled=true;b.textContent='Choosing…';try{const data=await api('browse',{});if(data.path)$('projectPath').value=data.path;}finally{b.disabled=false;b.textContent='Browse…';}}));
@@ -310,4 +312,5 @@ document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLower
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&voice.active){e.preventDefault();voice.cancel();}});
 window.addEventListener('pagehide',()=>voice.cancel());
 window.addEventListener('beforeunload',e=>{voice.cancel();if(dirty){e.preventDefault();e.returnValue='';}});
+$('prompt').addEventListener('input',updatePromptCount);updatePromptCount();
 loadState().then(()=>Promise.all([refreshFiles(),refreshChanges()])).catch(e=>toast('Could not connect to API Dev Lab: '+e.message,true));

@@ -4,7 +4,7 @@ An experimental Windows coding-agent starter for exploring the OpenAI API with y
 
 ## Project status
 
-Early development preview. Fifty automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
+Early development preview. Fifty-one automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
 
 ## Start
 
@@ -27,6 +27,8 @@ Open the included starter project and try:
 > Build a responsive task tracker with plain HTML, CSS, and JavaScript. Save tasks in browser localStorage. Add instructions for launching it on Windows. Verify the JavaScript syntax.
 
 The agent inspects files, makes edits, requests commands, and uses command results to continue working. You can inspect files in the editor, make your own edits, start a fresh chat, and return to previous project chats.
+
+Chat messages accept up to **40,000 characters**, with a live count below the message box. Oversized text stays in your draft and shows a clear error when you try to send it. Typing, pasting, and microphone dictation update the count. PowerShell commands have a separate 20,000-character limit. These are app limits; the overall conversation/context guard and model limits still apply.
 
 ## Adjust the workspace
 

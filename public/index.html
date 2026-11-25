@@ -10,7 +10,7 @@
     <div class="section-label">RECENT TASKS</div><div id="sessions" class="session-list"><p class="muted small">Your work starts here.</p></div>
     <div class="section-label file-label"><span>PROJECT FILES</span><div><button class="icon-button" id="newFile" title="New file" aria-label="New file">＋</button><button class="icon-button" id="refreshFiles" title="Refresh files" aria-label="Refresh files">↻</button></div></div>
     <div id="files" class="file-tree"><p class="muted small">Open a folder to explore its files.</p></div>
-    <div class="sidebar-bottom"><span class="status-dot"></span><span>Runs on your Windows PC</span><span class="version">v0.4.3</span></div>
+    <div class="sidebar-bottom"><span class="status-dot"></span><span>Runs on your Windows PC</span><span class="version">v0.4.4</span></div>
   </aside>
   <div id="sidebarResize" class="panel-resizer vertical-resizer" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-controls="files" tabindex="0" title="Drag to resize sidebar; double-click to reset"></div>
   <main class="main">
@@ -26,7 +26,7 @@
         </div><button type="button" id="jumpToLatest" class="jump-latest hidden">Jump to latest</button></div>
         <div id="approval" class="approval hidden" role="region" aria-label="Command approval"><div class="approval-heading"><span>◇</span><strong>PowerShell approval</strong><span class="tag">REVIEW</span></div><p id="approvalReason"></p><pre id="approvalCommand"></pre><small>Runs as your Windows user. Its working folder is <span id="approvalCwd"></span>. This is not a sandbox.</small><div class="approval-actions"><button id="declineCommand" class="secondary">Decline</button><button id="autoApproveProject" class="secondary">Allow automatically for this project</button><button id="approveCommand" class="primary">Approve once ↗</button></div></div>
         <form id="composer" class="composer"><div id="composerResize" class="panel-resizer horizontal-resizer" role="separator" aria-label="Resize message box" aria-orientation="horizontal" aria-controls="prompt" tabindex="0" title="Drag to resize message box; double-click to reset"></div>
-          <textarea id="prompt" rows="2" placeholder="Type a task, or use the mic…" aria-label="Task for the coding agent"></textarea>
+          <textarea id="prompt" rows="2" placeholder="Type a task, or use the mic…" aria-label="Task for the coding agent" aria-describedby="promptCount"></textarea>
           <span id="voiceStatus" class="visually-hidden" role="status" aria-live="polite">Live mic → text · Uses API balance</span>
           <div class="composer-bottom"><button type="button" id="composerProject" class="composer-folder">▱ <span id="composerFolderName">Choose project</span></button><div>
             <button id="voiceCancel" type="button" class="voice-cancel hidden" aria-label="Cancel dictation" title="Cancel dictation">×</button>
@@ -36,7 +36,7 @@
             <button id="stopButton" type="button" class="stop-button hidden">■ Stop</button><button id="sendButton" type="submit" class="send-button" aria-label="Start task">↑</button>
           </div></div>
         </form>
-        <div id="composerMeta" class="composer-meta"><span id="usageText">0 API calls · 0 tokens</span><span id="composerHint">Enter to send · Shift Enter for a new line</span></div>
+        <div id="composerMeta" class="composer-meta"><span id="usageText">0 API calls · 0 tokens</span><span id="promptCount" class="prompt-count">0 / 40,000 chars</span><span id="composerHint">Enter to send · Shift Enter for a new line</span></div>
       </section>
       <div id="editorResize" class="panel-resizer vertical-resizer hidden" role="separator" aria-label="Resize editor" aria-orientation="vertical" aria-controls="inspector" tabindex="0" title="Drag to resize editor; double-click to reset"></div><aside class="inspector hidden" id="inspector"><div class="inspector-tabs"><button class="active" id="fileTab">File editor</button><button id="changesTab">Changes <span id="changeCount">0</span></button><button id="closeInspector" aria-label="Close file panel" title="Close file panel">×</button></div><div id="editorPanel" class="editor-panel"><div class="editor-toolbar"><span id="editorPath">No file selected</span><button id="saveFile" class="small-button" disabled>Save</button></div><div class="editor-empty" id="editorEmpty"><span>⌑</span><strong>A closer look at your code</strong><p>Choose a file from the sidebar.<br>Agent edits appear here too.</p></div><div class="editor-wrap hidden" id="editorWrap"><pre id="lineNumbers" aria-hidden="true">1</pre><textarea id="fileContent" spellcheck="false" aria-label="File contents"></textarea></div><div class="editor-status" id="editorStatus">UTF-8 · Local project files</div></div><div id="changesPanel" class="changes-panel hidden"><p class="muted small">File edits are backed up automatically. PowerShell changes are not included.</p><div id="changesList"></div></div></aside>
     </div>

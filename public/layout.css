@@ -26,6 +26,7 @@
 .message{font-size:14px;line-height:1.8;padding:16px 4px}
 .composer{margin-top:10px;position:relative}.composer textarea{height:var(--composer-height);min-height:44px;max-height:180px;padding:9px 13px 5px;resize:none}
 .composer-bottom{padding:0 9px 8px}.composer-meta{margin:6px 0 8px;flex-shrink:0}
+.composer-meta{gap:10px;flex-wrap:wrap}.prompt-count{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}.prompt-count.over-limit{color:var(--red)}
 .sidebar{width:var(--sidebar-width);min-width:0;padding:18px 12px 0}
 .brand{margin-bottom:20px}.new-task{margin-bottom:20px}.sidebar-collapsed>.sidebar,.sidebar-collapsed>#sidebarResize{display:none}
 .panel-resizer{flex-shrink:0;position:relative;background:transparent;touch-action:none;outline:none;z-index:3}
