@@ -12,6 +12,7 @@ import {ChatDrafts} from './chat-drafts.js';
 const $ = id => document.getElementById(id);
 let state, activeRun = null, events = null, approval = null, streamBubble = null, file = null, dirty = false, changes = [], toastTimer;
 let goalPresets=[];
+let goalEditId=null,goalEditRevision=0;
 const number = n => new Intl.NumberFormat().format(n || 0);
 const basename = p => p?.split(/[\\/]/).filter(Boolean).at(-1) || 'Choose project';
 async function api(route, data) {
@@ -75,28 +76,47 @@ function canChangeProject(){if(activeRun)throw new Error('Wait for the active ta
 async function selectProject(id,fresh=false){if(!canChangeProject())return false;await api('project-select',{id,fresh});await afterProjectChange();return true;}
 async function selectChat(id){if(!canChangeProject())return false;await api('session',{id});await afterProjectChange();return true;}
 const projectLibrary=new ProjectLibrary({api,getState:()=>state,selectProject,selectChat,afterChange:afterProjectChange,beforeChange:canChangeProject,toast,isBusy:()=>!!activeRun});
+let researchPanel={refreshIfOpen:async()=>{}};
+$('researchButton').onclick=()=>toast('Research tools will be available after the server upgrade finishes.');
+import('./research-panel.js').then(({ResearchPanel})=>{researchPanel=new ResearchPanel({api,getState:()=>state,syncState:()=>loadState({render:false}),toast});}).catch(()=>{});
 function setBusy(value,text) {
   $('runStatus').textContent=text || (value?'Working on your task':'Ready when you are'); $('runDot').classList.toggle('busy',value);
   $('stopButton').classList.toggle('hidden',!value); $('sendButton').classList.toggle('hidden',value);
   for(const id of ['chooseProject','projectSwitcher','projectLibraryButton','newChat','composerProject','saveFile','newFile','activeProjectPath']) $(id).disabled=value || (id==='saveFile'&&!file);
+  renderGoal();
 }
 function usage(value) { $('usageText').textContent=`${number(value?.calls)} API calls · ${number((value?.input||0)+(value?.output||0))} tokens`; }
 function selectedGoal(){const session=state?.sessions.find(s=>s.id===state.activeSessionId);return state?.goals?.find(g=>g.id===session?.goalId);}
 function renderGoal(goal=selectedGoal()) {
+  $('goalButton').disabled=!!activeRun;$('goalButton').setAttribute('aria-label',goal?'Change goal':'Set a goal');$('goalButtonLabel').textContent=goal?'Goal':'Set goal';
   $('goalPanel').classList.toggle('hidden',!goal);if(!goal)return;
   $('goalTitle').textContent=goal.title;$('goalTitle').title=goal.title;$('goalDetailsTitle').textContent=goal.title;$('goalStatus').textContent=goal.status.replaceAll('_',' ');$('goalSummary').textContent=goal.summary;
-  $('goalRun').disabled=!!activeRun||goal.status==='complete';$('goalRun').textContent=goal.totalCalls?'Resume goal':'Run goal';$('goalPause').classList.toggle('hidden',goal.status!=='running');
+  $('goalRun').disabled=!!activeRun||goal.status==='complete';$('goalRun').textContent=goal.status==='complete'?'Completed':goal.status==='ready'?'Start goal':'Resume';$('goalRun').classList.toggle('hidden',goal.status==='running');
+  $('goalPause').classList.toggle('hidden',goal.status!=='running');$('goalPause').disabled=!activeRun;
+  $('goalEdit').disabled=!!activeRun;$('goalEdit').title=activeRun?'Pause and wait for the run to stop before changing the goal':'Change the goal';
+  $('goalProgress').textContent=`${goal.criteria.filter(c=>c.status==='done').length}/${goal.criteria.length} checks`;
   $('goalNextStep').textContent='Next: '+goal.nextStep;$('goalBudget').textContent=`Up to ${goal.maxCycles} cycles / ${goal.maxCalls} API calls per run · ${goal.totalCalls} calls used by this goal`;
   $('goalCriteria').replaceChildren();for(const c of goal.criteria){const li=document.createElement('li');li.textContent=(c.status==='done'?'✓ ':c.status==='blocked'?'! ':'○ ')+c.text;$('goalCriteria').append(li);}
+  $('goalHistory').replaceChildren();for(const item of [...(goal.revisions||[])].reverse()){const details=document.createElement('details'),summary=document.createElement('summary'),body=document.createElement('p');summary.textContent=`Revision ${item.revision} · ${new Date(item.time).toLocaleString()}`;body.textContent=item.objective+'\n\nCheckpoint: '+item.summary;details.append(summary,body);$('goalHistory').append(details);}
+  $('goalHistorySection').classList.toggle('hidden',!(goal.revisions||[]).length);
 }
 function fillGoalForm(goal) {
-  $('goalName').value=goal.title||'';$('goalObjective').value=goal.objective||'';$('goalChecks').value=(goal.criteria||[]).map(c=>typeof c==='string'?c:c.text).join('\n');$('goalConstraints').value=goal.constraints||'';
+  $('goalName').value=goal.titleAuto?'':goal.title||'';$('goalObjective').value=goal.objective||'';$('goalChecks').value=(goal.criteria||[]).map(c=>typeof c==='string'?c:c.text).join('\n');$('goalConstraints').value=goal.constraints||'';
   $('goalAllowedRoots').value=(goal.allowedRoots||[]).join('\n');$('goalReadOnlyRoots').value=(goal.readOnlyRoots||[]).join('\n');$('goalCycles').value=goal.maxCycles||3;$('goalCalls').value=goal.maxCalls||24;
 }
-async function showGoals() {
+async function showGoals(fresh=false) {
+  if(activeRun)throw new Error('Pause the current task and wait for it to stop before changing the goal.');
+  await loadState({render:false});
+  if(activeRun)throw new Error('Pause the current task and wait for it to stop before changing the goal.');
   if(!state.activeSessionId)return showProject();
-  goalPresets=await api('goal-presets');$('loadStockGoal').classList.toggle('hidden',!goalPresets.length);
-  fillGoalForm({allowedRoots:[state.sessions.find(s=>s.id===state.activeSessionId).root],criteria:[],maxCycles:3,maxCalls:24});$('goalDialog').showModal();
+  const session=state.sessions.find(s=>s.id===state.activeSessionId),goal=fresh?null:selectedGoal();
+  goalEditId=goal?.id||null;goalEditRevision=goal?.revision||0;
+  fillGoalForm(goal||{allowedRoots:[session.root],criteria:[],maxCycles:3,maxCalls:24});
+  $('goalDialogHeading').textContent=goal?'Change your goal':'Set a goal';$('goalSave').textContent=goal?'Save changes':'Save goal';$('goalNew').classList.toggle('hidden',!goal);
+  $('goalProject').textContent='Project: '+(goal?.primaryRoot||session.root);$('goalEditNote').classList.toggle('hidden',!goal);$('goalAdvanced').open=false;
+  goalPresets=await api('goal-presets');$('goalPreset').replaceChildren(new Option('Choose a saved template…',''));
+  goalPresets.forEach((preset,index)=>$('goalPreset').append(new Option(preset.title||'Saved goal',String(index))));$('goalPresetField').classList.toggle('hidden',!goalPresets.length);
+  if(!$('goalDialog').open)$('goalDialog').showModal();$('goalObjective').focus();
 }
 function renderCommandMode(mode) {
   state.commandMode=mode;
@@ -136,7 +156,7 @@ function renderMessages(session,{reset=false}={}) {
   const render=()=>{
   if(!session?.messages.length) { $('welcome').classList.remove('hidden'); for(const row of [...$('messages').children]) if(row.id!=='welcome')row.remove();return; }
   $('welcome').classList.add('hidden');for(const row of [...$('messages').children])if(row.id!=='welcome')row.remove();
-  for(const m of session.messages) {if(m.role==='tool'){const row=toolLine(m.content,!!m.error,m.result,m.root,m.command);if(m.id)row.dataset.toolId=m.id;}else message(m.role,m.content);}
+  for(const m of session.messages) {if(m.role==='user'&&m.goalId){const note=document.createElement('p');note.className='goal-cycle-note';note.textContent='◎ Continuing the saved goal';$('messages').append(note);}else if(m.role==='tool'){const row=toolLine(m.content,!!m.error,m.result,m.root,m.command);if(m.id)row.dataset.toolId=m.id;}else message(m.role,m.content);}
   [...$('messages').querySelectorAll('.markdown-table')].forEach((table,index)=>{table.scrollLeft=tableOffsets[index]||0;});
   };
   if(reset)chatScroll.reset(render);else chatScroll.update(render);
@@ -225,6 +245,7 @@ function connectRun(id) {
   cancelStreamRender();activeRun=id;setBusy(true);streamBubble=null;
   if(events)events.close();events=new EventSource('/api/events?id='+encodeURIComponent(id));
   const on=(type,fn)=>events.addEventListener(type,event=>{try{fn(JSON.parse(event.data));}catch(e){toast(e.message,true);}});
+  on('tool_result',data=>{if(['search_web','fetch_source','save_candidate','save_evidence','import_research_snapshot'].includes(data.name))void researchPanel.refreshIfOpen();});
   on('status',data=>setBusy(true,data.text));
   on('delta',data=>{if(!streamBubble)streamBubble=message('assistant','');streamBubble.text+=data.text;renderStream();});
   on('message',data=>{cancelStreamRender();chatScroll.update(()=>{if(streamBubble){streamBubble.text=data.text;markdown(streamBubble.body,data.text);}else message('assistant',data.text);streamBubble=null;});});
@@ -266,16 +287,21 @@ async function submitPrompt() {
 }
 $('chooseProject').onclick=showProject;$('composerProject').onclick=showProject;
 $('settingsButton').onclick=showSettings;$('connectButton').onclick=showSettings;
-$('goalButton').addEventListener('click',action(showGoals));
+$('goalButton').addEventListener('click',action(()=>showGoals()));
+$('goalEdit').addEventListener('click',action(()=>showGoals()));
+$('goalNew').addEventListener('click',action(()=>showGoals(true)));
 $('goalDetailsButton').onclick=()=>$('goalDetailsDialog').showModal();
-$('loadStockGoal').onclick=()=>{if(goalPresets[0])fillGoalForm(goalPresets[0]);};
+$('goalPreset').onchange=()=>{const value=$('goalPreset').value;if(value!==''&&goalPresets[Number(value)])fillGoalForm(goalPresets[Number(value)]);};
 $('goalForm').addEventListener('submit',action(async event=>{
   event.preventDefault();const lines=id=>$(id).value.split('\n').map(s=>s.trim()).filter(Boolean);
-  await api('goals',{title:$('goalName').value,objective:$('goalObjective').value,criteria:lines('goalChecks'),constraints:$('goalConstraints').value,allowedRoots:lines('goalAllowedRoots'),readOnlyRoots:lines('goalReadOnlyRoots'),maxCycles:Number($('goalCycles').value),maxCalls:Number($('goalCalls').value)});
-  $('goalDialog').close();await loadState({render:false});toast('Goal saved. Run it when you are ready to use API credits.');
+  const data={title:$('goalName').value,objective:$('goalObjective').value,criteria:lines('goalChecks'),constraints:$('goalConstraints').value,allowedRoots:lines('goalAllowedRoots'),readOnlyRoots:lines('goalReadOnlyRoots'),maxCycles:Number($('goalCycles').value),maxCalls:Number($('goalCalls').value)};
+  $('goalSave').disabled=true;
+  try{await api(goalEditId?'goal-update':'goals',goalEditId?{...data,id:goalEditId,expectedRevision:goalEditRevision}:data);
+    $('goalDialog').close();await loadState();toast('Goal saved. Start or Resume when you are ready.');
+  }finally{$('goalSave').disabled=false;}
 }));
 $('goalRun').addEventListener('click',action(async()=>{const goal=selectedGoal();if(!goal)return;const result=await api('goal-run',{id:goal.id});connectRun(result.id);renderGoal();}));
-$('goalPause').addEventListener('click',action(async()=>{const goal=selectedGoal();if(goal)await api('goal-pause',{id:goal.id});}));
+$('goalPause').addEventListener('click',action(async()=>{const goal=selectedGoal();if(goal){$('goalPause').disabled=true;try{await api('goal-pause',{id:goal.id});}catch(error){$('goalPause').disabled=false;throw error;}}}));
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
 for(const b of document.querySelectorAll('[data-prompt]'))b.onclick=()=>{voice.cancel();$('prompt').value=b.dataset.prompt;updatePromptCount();$('prompt').focus();if(!state.activeSessionId)showProject();};
 $('projectForm').addEventListener('submit',action(async e=>{e.preventDefault();if(!canChangeProject())return;await api('project',{path:$('projectPath').value.trim()});projectLibrary.close();await afterProjectChange();terminal('Project: '+$('projectPath').value.trim());}));

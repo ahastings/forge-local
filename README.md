@@ -4,7 +4,7 @@ An experimental Windows coding-agent starter for exploring the OpenAI API with y
 
 ## Project status
 
-Early development preview. Seventy-one automated checks pass, including project migration, saved chats, shared progress, environment redaction, simulated agent and dictation flows, and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
+Early development preview. Ninety-eight automated checks pass, including project migration, saved chats, shared progress, environment redaction, simulated agent and dictation flows, and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. Separate live integration checks verified microphone transcription, SerpAPI search and a public HTML page fetch. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
 
 ## Start
 
@@ -27,6 +27,20 @@ Select an empty project folder and try:
 > Build a responsive task tracker with plain HTML, CSS, and JavaScript. Save tasks in browser localStorage. Add instructions for launching it on Windows. Verify the JavaScript syntax.
 
 The agent inspects files, makes edits, requests commands, and uses command results to continue working. You can inspect files in the editor, make your own edits, start a fresh chat, and return to previous project chats.
+
+## Research tools and comparison notebook
+
+Open **Research** in the top bar for Compare, Sources, Evidence, and Budget views. The agent also has native `search_web`, `fetch_source`, `read_source`, `research_notebook`, `save_candidate`, `save_evidence`, and `import_research_snapshot` tools. These do not execute trades or add trailing-stop automation.
+
+Search uses [SerpAPI](https://serpapi.com/search-api), with `SERPAPI_KEY` read server-side from the Windows environment, project `.env`, app `.env`, or a shared `.env` selected in Research → Budget. Credentials are not copied to project files or returned to the browser/model. SerpAPI usage belongs to its own account; it is separate from OpenAI model calls and credits. Presence does not establish authentication, plan access, or remaining quota.
+
+The reader fetches public HTML, JSON and text, records HTTP/extraction status, preserves table text, and saves dated snapshots with SHA-256 hashes. It checks public DNS addresses, pins the selected address, rechecks redirects, sends no browser cookies or provider credentials, and limits response size/time. Login walls, bot protection, JavaScript-only pages and unsupported PDFs are reported rather than described as verified. This is not an interactive browser or full PDF reader.
+
+The shared notebook is `research/forge/research.json`, with immutable text snapshots in `research/forge/snapshots/`. It is visible to Codex and other tools using that same folder. Sources retain URLs, retrieval/publication dates (or unknown), versions and extraction limitations. Search snippets remain discovery records. Evidence requires an exact quote from a saved retrieved or explicitly dated historical snapshot; matching establishes provenance, not truth. Supporting, contradictory and missing evidence are separate. Candidate identity uses provider IDs or chain/contract, not ticker alone. Comparison coverage is not an investment score. Gaps are retained and only explicitly resolved with matching candidate/dimension evidence.
+
+Search and page attempt counters persist across resumed goals, including failed attempts and redirects. Defaults are 20 searches and 60 page attempts per project. Limits can be changed explicitly in Research → Budget without resetting counters. A cached page can be reused for one hour without a network request; Refresh forces another counted request. These budgets do not replace project-specific provider caps or model-call allowances. Native page retrieval rejects CoinGecko API endpoints so research continues to use the project's existing quota-controlled adapter.
+
+**Import an existing research baseline** accepts a project-relative JSON with `markets` and a `sources` cache ledger. Cache hashes are checked, original retrieval dates preserved, legacy inferred success left unverified, and missing fundamental evidence remains explicit. Imports do not make network requests or alter original files/provider counters. The existing CoinGecko counter can be displayed read-only when referenced by the imported baseline. JSON/report exports contain notebook metadata and citations; full snapshots stay alongside it in the project. Source/candidate/evidence creation does not silently resume a goal or change reasoning/model settings.
 
 ## Projects shared with Codex
 
@@ -99,7 +113,9 @@ Default: `gpt-6.1-sol`, low reasoning, at most 12 API rounds per task and 8,192 
 
 ## Saved goal mode
 
-Click Goals to save an objective, completion criteria, instructions, allowed project folders and optional read-only reference folders. Saving creates a draft and makes no model request. Run goal starts bounded work cycles; Pause/Stop preserves completed changes and the latest checkpoint. Resume uses a fresh per-run call allowance and the saved goal state. The default is three cycles and 24 API calls per user-started run, further bounded by each cycle's Settings limits. These limits are not a dollar budget or a free-credit-only guarantee.
+Click **Set goal**, type what you want finished, and save. Forge uses the selected project, creates a name, and adds completion checks for delivery, verification and a clear handoff. **Advanced options** contains custom checks, instructions, allowed/reference folders, saved templates and run limits. Saving creates a draft and makes no model request. **Start goal** starts bounded work cycles; **Pause** preserves completed changes and the latest saved checkpoint. **Resume** uses a fresh per-run call allowance and the saved goal state. The default is three cycles and 24 API calls per user-started run, further bounded by each cycle's Settings limits. These limits are not a dollar budget or a free-credit-only guarantee.
+
+**Edit goal** changes a saved goal after the active run has stopped. Previous versions, usage and checkpoints remain available under Details. Changing the objective, instructions, checks or folder scope resets the checks and requires tool evidence from after the edit. Name and run-limit changes preserve verified checks. Edits from a stale browser window are rejected instead of overwriting newer work. Goal controls stay visible in Focus chat, and generated work-cycle instructions appear as compact progress notes. Existing saved goals remain usable. A revised goal stays stopped until you start or resume it.
 
 Completion criteria require actual successful tool-call IDs. A model's final message alone cannot complete the saved goal. Saved evidence and criteria still need human review; the app cannot independently prove every semantic claim. Missing external data or access can leave a goal blocked. Application restart pauses a running goal and never automatically resumes model spending. No scheduler or Windows startup job is created.
 

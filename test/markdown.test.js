@@ -53,3 +53,6 @@ test('continued streaming preserves a table’s sideways reading position',()=>{
   markdown(root,sample+'\n| 3 | Another task | More code | Review | Continue |');
   assert.equal(root.children[0].scrollLeft,240);assert.equal(elements(root,'td').length,15);
 });
+test('source citations render HTTP(S) links while executable link schemes stay text',()=>{
+  const root=render('[Official source](https://example.org/report) and [unsafe](javascript:alert(1))');const links=elements(root,'a');assert.equal(links.length,1);assert.equal(links[0].attributes.href,'https://example.org/report');assert.equal(links[0].attributes.rel,'noopener noreferrer');
+});

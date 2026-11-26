@@ -75,6 +75,9 @@ test('shared progress honors override files and never writes to read-only refere
   const {base,root}=await fixture();await fs.writeFile(path.join(root,'AGENTS.override.md'),'Specific instructions.');await enableSharedProgress(root,path.join(base,'data'));assert.match(await fs.readFile(path.join(root,'AGENTS.override.md'),'utf8'),/FORGE-CONTEXT/);assert.equal(await fs.stat(path.join(root,'AGENTS.md')).catch(()=>null),null);
   const workspace=new Workspace(root,path.join(base,'data'));workspace.readOnly=true;const before=await fs.readFile(path.join(root,'FORGE-CONTEXT.md'),'utf8');assert.equal(await recordSharedProgress(workspace,{messages:[]},'complete'),false);assert.equal(await fs.readFile(path.join(root,'FORGE-CONTEXT.md'),'utf8'),before);
 });
-test('non-Git project previews degrade safely without changing project files',async()=>{
-  const {root}=await fixture();const before=await fs.readdir(root);assert.deepEqual(await gitOverview(root),{available:false,changes:[]});assert.deepEqual(await fs.readdir(root),before);
+test('unavailable Git project previews degrade safely without changing project files',async()=>{
+  const {root}=await fixture();
+  // Prevent this isolated fixture from inheriting the checkout that runs the tests.
+  await fs.writeFile(path.join(root,'.git'),'gitdir: missing-test-repository\n');
+  const before=await fs.readdir(root);assert.deepEqual(await gitOverview(root),{available:false,changes:[]});assert.deepEqual(await fs.readdir(root),before);
 });

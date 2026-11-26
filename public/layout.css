@@ -13,6 +13,18 @@
 .goal-heading strong{font-size:12px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .goal-heading>div{overflow:hidden}.goal-heading .eyebrow{display:none}
 .goal-status{flex-shrink:0}.goal-heading button{flex-shrink:0;font-size:11px;padding:5px 9px}
+.goal-progress{font-size:11px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+.goal-cycle-note{color:var(--muted);font-size:12px;margin:14px 4px}
+#goalDialog{width:min(640px,calc(100vw - 28px));max-height:88dvh;overflow:auto;padding:24px}
+#goalDialog .goal-project{font:11px/1.6 Consolas,monospace;overflow-wrap:anywhere;color:var(--muted);margin:0 0 20px}
+#goalDialog .goal-main-label{font-size:15px;margin-top:0}#goalDialog #goalObjective{font-size:15px;line-height:1.65;padding:13px;min-height:140px;max-height:40vh}
+#goalDialog .field-help{font-size:12px;line-height:1.65;margin:9px 0 14px}
+.goal-advanced{margin-top:20px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:15px 0}
+.goal-advanced>summary{cursor:pointer;color:#c4d8c8;font-size:13px}.goal-advanced>summary span{color:var(--muted);font-size:11px;margin-left:8px}
+#goalDialog .goal-save-note{font-size:12px;line-height:1.7;color:var(--muted);margin:17px 0 0}
+#goalDialog .goal-edit-note{font-size:12px;line-height:1.7;color:#c0d1bd;border-left:2px solid #739975;padding-left:11px;margin:16px 0}
+#goalDialog .dialog-actions{margin-top:20px}#goalNew{margin-right:auto}
+#goalHistory p{white-space:pre-wrap;overflow-wrap:anywhere}
 #goalDetailsDialog{width:min(720px,calc(100vw - 30px));max-height:85dvh;padding:20px}
 #goalDetailsDialog[open]{display:flex;flex-direction:column}
 #goalDetailsDialog .dialog-heading{flex-shrink:0;margin-bottom:12px}
@@ -62,7 +74,7 @@
 .terminal .terminal-body{height:var(--terminal-height);display:flex;flex-direction:column;min-height:80px;padding:0 18px 8px}
 .terminal .terminal-body>pre{height:auto;flex:1;min-height:0;margin:5px 0;font-size:12px}
 .terminal form{flex-shrink:0}.bottom-bar{padding:5px 12px;flex-shrink:0}
-.focus-chat>.sidebar,.focus-chat>#sidebarResize,.focus-chat #projectPathForm,.focus-chat #goalPanel,.focus-chat .inspector,.focus-chat #editorResize,.focus-chat .terminal,.focus-chat .bottom-bar{display:none!important}
+.focus-chat>.sidebar,.focus-chat>#sidebarResize,.focus-chat #projectPathForm,.focus-chat .inspector,.focus-chat #editorResize,.focus-chat .terminal,.focus-chat .bottom-bar{display:none!important}
 .focus-chat .conversation{padding:14px clamp(16px,5vw,100px) 0}.focus-chat .workspace{min-height:340px}
 .focus-chat .connection-banner{margin:8px 18px 0}
 @media(max-width:1000px){
@@ -85,3 +97,4 @@
   .conversation{padding-top:9px}.conversation-heading{margin-bottom:7px}.eyebrow{font-size:8px}.run-state{margin-top:4px}
   .workspace{min-height:340px}.composer{margin-top:7px}.composer-meta{margin:4px 0 6px}.bottom-bar{display:none}
 }
+@media(max-width:560px){.goal-heading{flex-wrap:wrap}.goal-heading>div{flex-basis:100%}.goal-progress{margin-right:auto}#goalDialog{padding:18px}#goalDialog .dialog-actions{flex-wrap:wrap}#goalNew{flex-basis:100%;margin:0}.goal-advanced>summary span{display:block;margin:5px 0 0 15px}}

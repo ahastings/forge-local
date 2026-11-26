@@ -7,13 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { Workspace, projectRoot, atomicJson } from './lib/workspace.js';
 import { runShell, dpapi, browseFolder } from './lib/windows.js';
 import { runAgent } from './lib/agent.js';
-import { makeGoal, recordCheckpoint, pursueGoal } from './lib/goals.js';
+import { makeGoal, updateGoal, recordCheckpoint, pursueGoal } from './lib/goals.js';
 import { readAudio, transcribeAudio } from './lib/transcription.js';
 import { createTranscriptionCall } from './lib/live-transcription.js';
 import { MAX_COMMAND_CHARS, promptText } from './public/input-limits.js';
 import {migrateProjects,rememberProject,projectSummaries,selectSavedProject,importCodexProjects,createProjectFolder,resolveProjectRequest,rootKey} from './lib/projects.js';
 import {projectContext,safeText} from './lib/project-context.js';
 import {enableSharedProgress,sharedProgressStatus,recordSharedProgress,gitOverview} from './lib/shared-progress.js';
+import {Research,researchMarkdown} from './lib/research.js';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.FORGE_DATA_DIR || path.join(appDir,'.local-data');
@@ -58,6 +59,17 @@ const redact = value => {
 };
 const activeSession = () => state.sessions.find(s=>s.id===state.activeSessionId);
 const requireIdle = () => { if(run && !run.finished) throw new Error('Stop the active task before changing projects, settings, or files.'); };
+async function goalFolders(data, primaryRoot) {
+  for(const field of ['allowedRoots','readOnlyRoots'])if(data[field]!==undefined&&!Array.isArray(data[field]))throw new Error('Use a list of project folders.');
+  const allowed=data.allowedRoots?.length?data.allowedRoots:[primaryRoot];
+  const resolved=await Promise.all([primaryRoot,...allowed].map(folder=>projectRoot(folder)));
+  const allowedRoots=resolved.filter((folder,i)=>resolved.findIndex(root=>sameProject(root,folder))===i);
+  if(allowedRoots.length>6)throw new Error('Use at most six project folders.');
+  const readOnlyRoots=await Promise.all((data.readOnlyRoots||[]).map(folder=>projectRoot(folder)));
+  if(readOnlyRoots.some(folder=>!allowedRoots.some(root=>sameProject(root,folder))))throw new Error('Read-only folders must also be in the allowed folder list.');
+  if(readOnlyRoots.some(folder=>sameProject(folder,primaryRoot)))throw new Error('The primary project must stay writable. Add reference folders separately.');
+  return {allowedRoots,readOnlyRoots};
+}
 function emit(task,type,data) {
   const event = {id:task.events.length+1,type,data:redact(data)}; task.events.push(event);
   if(type==='tool' && (task.kind==='agent'||task.kind==='goal')) {
@@ -137,6 +149,7 @@ async function contextForRoot(root){
 }
 async function agentContextForRoot(root){const context=await contextForRoot(root);context.documents=context.documents.map(document=>({...document,text:document.text.slice(0,2500),truncated:document.truncated||document.text.length>2500}));context.recentChats=context.recentChats.slice(0,2).map(chat=>({...chat,lastReply:chat.lastReply.slice(0,700)}));context.availableProjects=context.availableProjects.map(project=>({name:project.name}));return context;}
 async function recordProgress(task,ws,session,status){try{await recordSharedProgress(ws,session,status);}catch{emit(task,'status',{text:'Task saved. The shared progress note could not be updated.'});}}
+const researchFor=(ws,task)=>new Research(ws.root,{readOnly:!!ws.readOnly,sharedEnvFile:state.config.researchEnvFile||'',appDir,signal:task?.controller.signal});
 const server=http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -148,7 +161,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/health') return json(res,{app:'forge-local',ok:true});
     if(!url.pathname.startsWith('/api/')) {
       if(req.method!=='GET') return json(res,{error:'Method not allowed.'},405);
-      const files={'/':'index.html','/app.js':'app.js','/project-library.js':'project-library.js','/chat-drafts.js':'chat-drafts.js','/markdown.js':'markdown.js','/input-limits.js':'input-limits.js','/chat-scroll.js':'chat-scroll.js','/layout.js':'layout.js','/layout.css':'layout.css','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
+      const files={'/':'index.html','/app.js':'app.js','/research-panel.js':'research-panel.js','/research.css':'research.css','/project-library.js':'project-library.js','/chat-drafts.js':'chat-drafts.js','/markdown.js':'markdown.js','/input-limits.js':'input-limits.js','/chat-scroll.js':'chat-scroll.js','/layout.js':'layout.js','/layout.css':'layout.css','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
       const file=files[url.pathname]; if(!file) return json(res,{error:'Not found.'},404);
       res.setHeader('Set-Cookie',`forge_session=${sessionCookie}; HttpOnly; SameSite=Strict; Path=/`);
       res.setHeader('Content-Type',file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'image/svg+xml');
@@ -172,6 +185,24 @@ const server=http.createServer(async(req,res)=>{
       req.on('close',()=>{clearInterval(keep);task.clients.delete(res);}); return;
     }
     const session=activeSession();
+    if(url.pathname.startsWith('/api/research')){
+      if(!session)throw new Error('Choose a project before opening research.');
+      const data=req.method==='POST'?await body(req):Object.fromEntries(url.searchParams);const project=state.projects.find(p=>sameProject(p.root,session.root));
+      if(data.projectId!==project?.id)throw new Error('The active project changed. Reopen Research before continuing.');
+      const research=researchFor(workspace(session));
+      if(req.method==='GET'&&url.pathname==='/api/research')return json(res,{...await research.status(),projectId:project.id,projectName:project.name,sharedEnvFile:state.config.researchEnvFile||'',model:{effort:state.config.effort,roundLimit:state.config.maxRounds}});
+      if(req.method==='GET'&&url.pathname==='/api/research/source')return json(res,await research.readSource(data.id,Number(data.offset||0),20000));
+      if(req.method==='GET'&&url.pathname==='/api/research/export'){
+        const notebook=await research.store.summary();res.setHeader('Content-Disposition','attachment; filename="forge-research.'+(data.format==='markdown'?'md':'json')+'"');res.setHeader('Content-Type',data.format==='markdown'?'text/markdown; charset=utf-8':'application/json; charset=utf-8');return res.end(data.format==='markdown'?researchMarkdown(notebook):JSON.stringify(notebook,null,2));
+      }
+      requireIdle();
+      if(req.method==='POST'&&url.pathname==='/api/research/settings'){
+        const envFile=String(data.sharedEnvFile||'').trim();if(envFile){if(!path.isAbsolute(envFile)||!/^\.env(?:\.[\w-]+)?$/i.test(path.basename(envFile)))throw new Error('Choose an absolute path to an existing .env file.');const stat=await fs.lstat(envFile);if(!stat.isFile()||stat.isSymbolicLink())throw new Error('Choose a regular .env file.');}
+        await research.store.setBudget({searchLimit:data.searchLimit,pageLimit:data.pageLimit});state.config.researchEnvFile=envFile;await save();return json(res,{ok:true});
+      }
+      if(req.method==='POST'&&url.pathname==='/api/research/action')return json(res,await research.tool(data.action,data.args||{}));
+      throw new Error('Unknown research route.');
+    }
     if(req.method==='GET' && url.pathname==='/api/files') { if(!session) throw new Error('Choose a project folder first.'); return json(res,await workspace(session).list(url.searchParams.get('path')||'.',3)); }
     if(req.method==='GET' && url.pathname==='/api/file') { if(!session) throw new Error('Choose a project folder first.'); return json(res,await workspace(session).read(url.searchParams.get('path'))); }
     if(req.method==='GET' && url.pathname==='/api/changes') return json(res,session?await workspace(session).changes():[]);
@@ -205,13 +236,17 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/goals') {
       requireIdle();if(!session)throw new Error('Choose the goal’s primary project first.');
       const goal=makeGoal(data,session.root);
-      const allowed=Array.isArray(data.allowedRoots)&&data.allowedRoots.length?data.allowedRoots:[session.root];
-      if(allowed.length>6)throw new Error('Use at most six project folders.');
-      goal.allowedRoots=[...new Set(await Promise.all(allowed.map(folder=>projectRoot(folder))))];
-      if(!goal.allowedRoots.some(folder=>sameProject(folder,session.root)))goal.allowedRoots.unshift(session.root);
-      goal.readOnlyRoots=await Promise.all((data.readOnlyRoots||[]).map(folder=>projectRoot(folder)));
-      if(goal.readOnlyRoots.some(folder=>!goal.allowedRoots.some(root=>sameProject(root,folder))))throw new Error('Read-only folders must also be in the allowed folder list.');
+      Object.assign(goal,await goalFolders(data,session.root));
+      requireIdle();
       state.goals.unshift(goal);session.goalId=goal.id;session.title=goal.title;await save();return json(res,{ok:true,goal});
+    }
+    if(url.pathname==='/api/goal-update') {
+      requireIdle();
+      const goal=state.goals.find(g=>g.id===data.id);
+      if(!goal||!session||session.goalId!==goal.id)throw new Error('Select the chat containing this saved goal.');
+      const folders=await goalFolders({allowedRoots:data.allowedRoots??goal.allowedRoots,readOnlyRoots:data.readOnlyRoots??goal.readOnlyRoots},goal.primaryRoot);
+      requireIdle();
+      updateGoal(goal,{...data,...folders});session.title=goal.title;await save();return json(res,{ok:true,goal});
     }
     if(url.pathname==='/api/goal-run') {
       requireIdle();if(!apiKey)throw new Error('Connect an OpenAI API key in Settings first.');
@@ -227,7 +262,7 @@ const server=http.createServer(async(req,res)=>{
       };
       json(res,{id:task.id});
       void (async()=>{
-        try {await pursueGoal({goal,run:task,session,config:{...state.config},runCycle:(config,send)=>runAgent({run:task,session,key:apiKey,config,workspace:ws,contextForRoot:agentContextForRoot,recordProgress:status=>recordProgress(task,ws,session,status),resolveProject:(requested,prompts)=>resolveProjectRequest(requested,prompts,state.projects),approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject,checkpointGoal:async update=>{const result=recordCheckpoint(goal,update,session.messages);await save();emit(task,'goal',goal);return result;},emit:send,save}),emit:(type,value)=>emit(task,type,value),save});}
+        try {await pursueGoal({goal,run:task,session,config:{...state.config},runCycle:(config,send)=>runAgent({run:task,session,key:apiKey,config,workspace:ws,contextForRoot:agentContextForRoot,researchTools:(name,args)=>researchFor(ws,task).tool(name,args),recordProgress:status=>recordProgress(task,ws,session,status),resolveProject:(requested,prompts)=>resolveProjectRequest(requested,prompts,state.projects),approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject,checkpointGoal:async update=>{const result=recordCheckpoint(goal,update,session.messages);await save();emit(task,'goal',goal);return result;},emit:send,save}),emit:(type,value)=>emit(task,type,value),save});}
         catch(error){emit(task,'error',{text:error.message});emit(task,'done',{status:'failed'});}
         finally{finishRun(task);}
       })();
@@ -263,7 +298,7 @@ const server=http.createServer(async(req,res)=>{
         const key=String(data.apiKey).trim(); if(!key.startsWith('sk-') || /\s/.test(key)) throw new Error('Enter an OpenAI API key beginning with sk-.');
         const encrypted=await dpapi(key); await fs.writeFile(path.join(dataDir,'key.dpapi'),encrypted); apiKey=key; keySource='Windows encrypted storage';
       }
-      state.config={model:data.model,effort:data.effort,maxRounds,maxOutput}; await save(); return json(res,{ok:true,keyConfigured:!!apiKey});
+      state.config={...state.config,model:data.model,effort:data.effort,maxRounds,maxOutput}; await save(); return json(res,{ok:true,keyConfigured:!!apiKey});
     }
     if(url.pathname==='/api/check-key') {
       requireIdle(); if(!apiKey) throw new Error('Save an API key first.');
@@ -314,7 +349,7 @@ const server=http.createServer(async(req,res)=>{
       json(res,{id:task.id});
       const execute=async()=>{
         try {
-          if(isAgent) await runAgent({run:task,session,key:apiKey,config:{...state.config},workspace:ws,contextForRoot:agentContextForRoot,recordProgress:status=>recordProgress(task,ws,session,status),resolveProject:(requested,prompts)=>resolveProjectRequest(requested,prompts,state.projects),approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject:async requested=>{
+          if(isAgent) await runAgent({run:task,session,key:apiKey,config:{...state.config},workspace:ws,contextForRoot:agentContextForRoot,researchTools:(name,args)=>researchFor(ws,task).tool(name,args),recordProgress:status=>recordProgress(task,ws,session,status),resolveProject:(requested,prompts)=>resolveProjectRequest(requested,prompts,state.projects),approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject:async requested=>{
             const root=await projectRoot(requested);
             const listing=await new Workspace(root,dataDir).list('.',1);
             ws.root=root;session.root=root;rememberProject(state,root).lastSessionId=session.id;await save();

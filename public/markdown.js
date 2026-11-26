@@ -54,11 +54,12 @@ export function parseMarkdown(text){
 }
 
 function inline(parent,text,document){
-  const pattern=/(`+)([\s\S]*?)\1|\*\*([^*]+)\*\*|\\([\\|*`])/g;let start=0;
+  const pattern=/(`+)([\s\S]*?)\1|\*\*([^*]+)\*\*|\\([\\|*`])|\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g;let start=0;
   for(const match of text.matchAll(pattern)){
     parent.append(document.createTextNode(text.slice(start,match.index)));
     if(match[1]){const code=document.createElement('code');code.textContent=match[2];parent.append(code);}
     else if(match[3]){const strong=document.createElement('strong');inline(strong,match[3],document);parent.append(strong);}
+    else if(match[5]){const link=document.createElement('a');link.textContent=match[5];link.setAttribute('href',match[6]);link.setAttribute('target','_blank');link.setAttribute('rel','noopener noreferrer');parent.append(link);}
     else parent.append(document.createTextNode(match[4]));
     start=match.index+match[0].length;
   }

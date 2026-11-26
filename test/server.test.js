@@ -37,8 +37,20 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   assert.equal((await fetch(origin+'/markdown.js')).status,200);
   assert.equal((await fetch(origin+'/project-library.js')).status,200);
   assert.equal((await fetch(origin+'/chat-drafts.js')).status,200);
+  assert.equal((await fetch(origin+'/research-panel.js')).status,200);
+  assert.equal((await fetch(origin+'/research.css')).status,200);
   const libraryState=await (await get('state')).json();const libraryProject=libraryState.projects.find(p=>p.root===project);
   const originalChat=libraryState.activeSessionId;
+  const researchState=await get('research?projectId='+libraryProject.id);assert.equal(researchState.status,200);assert.equal((await researchState.json()).budget.searchAttempts,0);
+  assert.equal((await post('research/action',{projectId:'stale-project',action:'save_candidate',args:{name:'Must not save'}})).status,400);
+  assert.equal((await post('research/settings',{projectId:libraryProject.id,searchLimit:2,pageLimit:3,sharedEnvFile:path.join(project,'README.md')})).status,400);
+  const researchEnv=path.join(base,'.env.research');await fs.writeFile(researchEnv,'SERPAPI_KEY=\n');
+  assert.equal((await post('research/settings',{projectId:libraryProject.id,searchLimit:2,pageLimit:3,sharedEnvFile:researchEnv})).status,200);
+  assert.equal((await post('settings',libraryState.config)).status,200);
+  assert.equal((await (await get('research?projectId='+libraryProject.id)).json()).sharedEnvFile,researchEnv,'model settings preserve the research credential location');
+  assert.equal((await post('research/action',{projectId:libraryProject.id,action:'save_candidate',args:{id:'',name:'Test candidate',symbol:'T',asset_id:'test-candidate',chain:'',contract:'',category:'Test',notes:''}})).status,200);
+  assert.equal((await (await get('research?projectId='+libraryProject.id)).json()).candidates.length,1);
+  assert.equal((await get('research/export?projectId='+libraryProject.id+'&format=markdown')).status,200);
   assert.equal((await post('project-select',{id:libraryProject.id})).status,200);
   assert.equal((await (await get('state')).json()).activeSessionId,originalChat);
   assert.equal((await post('project-select',{id:libraryProject.id,fresh:true})).status,200);
@@ -84,6 +96,7 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
       while((end=buffer.indexOf('\n\n'))>=0){const part=buffer.slice(0,end);buffer=buffer.slice(end+2);if(part.includes('event: approval\n')){
         const data=JSON.parse(part.split('\n').find(line=>line.startsWith('data: ')).slice(6));assert.equal(approved,false);approved=true;
         assert.equal((await post('project',{path:project})).status,400);
+        assert.equal((await post('goal-update',{id:'busy-edit',expectedRevision:0,objective:'Do not edit while a command runs.'})).status,400);
         if(switchToAuto) assert.equal((await post('command-policy',{mode:'auto'})).status,200);
         else assert.equal((await post('approve',{runId:task.id,id:data.id,approved:allow})).status,200);
       }
@@ -104,9 +117,19 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   assert.equal((await post('project',{path:project})).status,200);assert.equal((await (await get('state')).json()).commandMode,'auto');
   const goalCreated=await post('goals',{title:'Saved test goal',objective:'Implement a small verified local test feature.',criteria:['Write the feature','Verify it'],allowedRoots:[project,otherProject],readOnlyRoots:[otherProject],maxCycles:2,maxCalls:4});assert.equal(goalCreated.status,200);
   const goal=(await goalCreated.json()).goal;assert.equal(goal.status,'ready');assert.deepEqual(goal.readOnlyRoots,[otherProject]);
+  const changed=await post('goal-update',{id:goal.id,expectedRevision:0,objective:'Implement and verify a revised local test feature.'});assert.equal(changed.status,200);
+  const revised=(await changed.json()).goal;assert.equal(revised.id,goal.id);assert.equal(revised.revision,1);assert.deepEqual(revised.readOnlyRoots,[otherProject]);assert.equal(revised.revisions.length,1);
+  assert.equal((await post('goal-update',{id:goal.id,expectedRevision:0,objective:'Stale overwrite must fail.'})).status,400);
+  assert.equal((await post('goal-update',{id:goal.id,expectedRevision:1,readOnlyRoots:[project]})).status,400);
+  assert.equal((await post('goal-update',{id:goal.id,expectedRevision:1,allowedRoots:[project],readOnlyRoots:[otherProject]})).status,400);
+  const afterInvalid=(await (await get('state')).json()).goals.find(g=>g.id===goal.id);assert.equal(afterInvalid.revision,1);assert.equal(afterInvalid.objective,revised.objective);
   assert.equal((await post('goal-run',{id:goal.id})).status,400); // No key: no model request.
   assert.equal((await post('goal-pause',{id:goal.id})).status,200);assert.equal((await (await get('state')).json()).goals.find(g=>g.id===goal.id).status,'paused');
+  const simpleResponse=await post('goals',{objective:'Build a feature from only this sentence.'});assert.equal(simpleResponse.status,200);
+  const simpleGoal=(await simpleResponse.json()).goal;assert.equal(simpleGoal.criteria.length,3);assert.equal(simpleGoal.totalCalls,0);assert.equal(simpleGoal.primaryRoot,project);assert.deepEqual(simpleGoal.allowedRoots,[project]);assert.equal(simpleGoal.title,'Build a feature from only this sentence.');
+  assert.equal((await post('goal-update',{id:goal.id,expectedRevision:1,title:'Wrong chat association'})).status,400);
   const saved=JSON.parse(await fs.readFile(path.join(base,'state','state.json'),'utf8'));assert.ok(saved.trustedProjects.includes(project));assert.ok(!saved.trustedProjects.includes(otherProject));
+  assert.equal(saved.goals.find(g=>g.id===goal.id).revision,1);assert.equal(saved.goals.find(g=>g.id===goal.id).status,'paused');
   assert.equal((await post('command-policy',{mode:'ask'})).status,200);assert.equal((await (await get('state')).json()).commandMode,'ask');
   const reviewedAgain=await command("Write-Output 'review-restored'",true);assert.match(reviewedAgain,/"exitCode":0/);
   const settings=await post('settings',{apiKey:'sk-forge-fake-test-key',model:'gpt-6.1-sol',effort:'low',maxRounds:3,maxOutput:1024});assert.equal(settings.status,200);
