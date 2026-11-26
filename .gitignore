@@ -7,8 +7,5 @@ node_modules/
 *.dpapi
 *.pem
 *.key
-# Working project folders are private; publish only the clean starter instructions.
-projects/*
-!projects/hello-windows/
-projects/hello-windows/*
-!projects/hello-windows/README.md
+# Working project folders are private and never part of application releases.
+projects/
