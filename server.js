@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Workspace, projectRoot, atomicJson } from './lib/workspace.js';
 import { runShell, dpapi, browseFolder } from './lib/windows.js';
@@ -10,9 +11,13 @@ import { makeGoal, recordCheckpoint, pursueGoal } from './lib/goals.js';
 import { readAudio, transcribeAudio } from './lib/transcription.js';
 import { createTranscriptionCall } from './lib/live-transcription.js';
 import { MAX_COMMAND_CHARS, promptText } from './public/input-limits.js';
+import {migrateProjects,rememberProject,projectSummaries,selectSavedProject,importCodexProjects,createProjectFolder,resolveProjectRequest,rootKey} from './lib/projects.js';
+import {projectContext,safeText} from './lib/project-context.js';
+import {enableSharedProgress,sharedProgressStatus,recordSharedProgress,gitOverview} from './lib/shared-progress.js';
 
 const appDir = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.FORGE_DATA_DIR || path.join(appDir,'.local-data');
+const codexHome=process.env.FORGE_CODEX_HOME||process.env.CODEX_HOME||path.join(os.homedir(),'.codex');
 await fs.mkdir(dataDir,{recursive:true});
 // Load this app's .env explicitly. Never copy unrelated shared credentials.
 try {
@@ -28,6 +33,7 @@ const sessionCookie = crypto.randomBytes(32).toString('hex');
 const defaults = {model:'gpt-6.1-sol',effort:'low',maxRounds:12,maxOutput:8192};
 let state;
 try { state = JSON.parse(await fs.readFile(path.join(dataDir,'state.json'),'utf8')); } catch(e) { if(e.code!=='ENOENT') throw e; }
+if(state&&state.schemaVersion!==2){const backup=path.join(dataDir,'backups','before-project-library-'+Date.now()+'.json');await fs.mkdir(path.dirname(backup),{recursive:true});await fs.copyFile(path.join(dataDir,'state.json'),backup);}
 state ||= {config:defaults,sessions:[],activeSessionId:null}; state.config = {...defaults,...state.config};
 state.goals=Array.isArray(state.goals)?state.goals:[];
 for(const goal of state.goals)if(goal.status==='running'){goal.status='paused';goal.summary='The app restarted. Resume from the saved checkpoint and current project files.';}
@@ -120,8 +126,17 @@ async function body(req) {
 const json=(res,value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(redact(value)));};
 function newSession(root) {
   const s={id:crypto.randomUUID(),root,title:'New task',messages:[],usage:{calls:0,input:0,output:0},created:new Date().toISOString()};
-  state.sessions.unshift(s); state.activeSessionId=s.id; return s;
+  state.sessions.unshift(s); state.activeSessionId=s.id;const project=rememberProject(state,root);project.lastSessionId=s.id;project.lastOpened=s.created;return s;
 }
+migrateProjects(state);
+let catalogStatus=await importCodexProjects(state,codexHome);await save();
+async function contextForRoot(root){
+  const context=await projectContext(root,{codexHome,dataDir});
+  context.recentChats=state.sessions.filter(s=>sameProject(s.root,root)&&s.id!==state.activeSessionId).slice(0,3).map(s=>({id:s.id,title:safeText(s.title),lastReply:safeText(s.messages.findLast(m=>m.role==='assistant')?.content.slice(0,1400)||''),note:'Historical chat text; inspect current files to verify claims.'}));
+  context.availableProjects=state.projects.map(p=>({name:p.name,root:p.root}));context.sharedProgress=await sharedProgressStatus(root);return context;
+}
+async function agentContextForRoot(root){const context=await contextForRoot(root);context.documents=context.documents.map(document=>({...document,text:document.text.slice(0,2500),truncated:document.truncated||document.text.length>2500}));context.recentChats=context.recentChats.slice(0,2).map(chat=>({...chat,lastReply:chat.lastReply.slice(0,700)}));context.availableProjects=context.availableProjects.map(project=>({name:project.name}));return context;}
+async function recordProgress(task,ws,session,status){try{await recordSharedProgress(ws,session,status);}catch{emit(task,'status',{text:'Task saved. The shared progress note could not be updated.'});}}
 const server=http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store'); res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('Referrer-Policy','no-referrer');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -133,7 +148,7 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/health') return json(res,{app:'forge-local',ok:true});
     if(!url.pathname.startsWith('/api/')) {
       if(req.method!=='GET') return json(res,{error:'Method not allowed.'},405);
-      const files={'/':'index.html','/app.js':'app.js','/markdown.js':'markdown.js','/input-limits.js':'input-limits.js','/chat-scroll.js':'chat-scroll.js','/layout.js':'layout.js','/layout.css':'layout.css','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
+      const files={'/':'index.html','/app.js':'app.js','/project-library.js':'project-library.js','/chat-drafts.js':'chat-drafts.js','/markdown.js':'markdown.js','/input-limits.js':'input-limits.js','/chat-scroll.js':'chat-scroll.js','/layout.js':'layout.js','/layout.css':'layout.css','/project-command.js':'project-command.js','/voice-input.js':'voice-input.js','/live-transcription.js':'live-transcription.js','/microphone-meter.js':'microphone-meter.js','/voice-waveform.js':'voice-waveform.js','/style.css':'style.css','/icon.svg':'icon.svg'};
       const file=files[url.pathname]; if(!file) return json(res,{error:'Not found.'},404);
       res.setHeader('Set-Cookie',`forge_session=${sessionCookie}; HttpOnly; SameSite=Strict; Path=/`);
       res.setHeader('Content-Type',file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'image/svg+xml');
@@ -142,7 +157,11 @@ const server=http.createServer(async(req,res)=>{
     const cookie=req.headers.cookie?.split(';').map(s=>s.trim()).find(s=>s.startsWith('forge_session='))?.slice(14);
     if(cookie!==sessionCookie) return json(res,{error:'Open Forge in your browser to start a local session.'},401);
     if(req.method==='POST' && req.headers['x-forge-request']!=='1') return json(res,{error:'Invalid local request.'},403);
-    if(req.method==='GET' && url.pathname==='/api/state') return json(res,{...state,commandMode:commandMode(activeSession()?.root),keyConfigured:!!apiKey,keySource,appDir,exampleProject:path.join(appDir,'projects','hello-windows'),run:run&&!run.finished?{id:run.id,sessionId:run.sessionId}:null});
+    if(req.method==='GET' && url.pathname==='/api/state') return json(res,{...state,projects:projectSummaries(state),catalogStatus,commandMode:commandMode(activeSession()?.root),keyConfigured:!!apiKey,keySource,appDir,run:run&&!run.finished?{id:run.id,sessionId:run.sessionId}:null});
+    if(req.method==='GET' && url.pathname==='/api/project-context'){
+      const project=state.projects.find(p=>p.id===url.searchParams.get('id'));if(!project)throw new Error('Choose a saved project.');
+      await projectRoot(project.root);const context=await contextForRoot(project.root);context.git=await gitOverview(project.root);return json(res,context);
+    }
     if(req.method==='GET' && url.pathname==='/api/events') {
       const task=runs.get(url.searchParams.get('id')); if(!task) return json(res,{error:'Task not found.'},404);
       res.writeHead(200,{'Content-Type':'text/event-stream','Connection':'keep-alive','X-Accel-Buffering':'no'}); res.write(': connected\n\n');
@@ -208,7 +227,7 @@ const server=http.createServer(async(req,res)=>{
       };
       json(res,{id:task.id});
       void (async()=>{
-        try {await pursueGoal({goal,run:task,session,config:{...state.config},runCycle:(config,send)=>runAgent({run:task,session,key:apiKey,config,workspace:ws,approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject,checkpointGoal:async update=>{const result=recordCheckpoint(goal,update,session.messages);await save();emit(task,'goal',goal);return result;},emit:send,save}),emit:(type,value)=>emit(task,type,value),save});}
+        try {await pursueGoal({goal,run:task,session,config:{...state.config},runCycle:(config,send)=>runAgent({run:task,session,key:apiKey,config,workspace:ws,contextForRoot:agentContextForRoot,recordProgress:status=>recordProgress(task,ws,session,status),resolveProject:(requested,prompts)=>resolveProjectRequest(requested,prompts,state.projects),approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject,checkpointGoal:async update=>{const result=recordCheckpoint(goal,update,session.messages);await save();emit(task,'goal',goal);return result;},emit:send,save}),emit:(type,value)=>emit(task,type,value),save});}
         catch(error){emit(task,'error',{text:error.message});emit(task,'done',{status:'failed'});}
         finally{finishRun(task);}
       })();
@@ -253,11 +272,20 @@ const server=http.createServer(async(req,res)=>{
       const data=await response.json(); return json(res,{ok:true,models:(data.data||[]).map(m=>m.id).filter(id=>/^gpt-/.test(id)&&!/(?:codex|audio|realtime|transcribe|tts|image)/i.test(id)).sort()});
     }
     if(url.pathname==='/api/browse') { requireIdle(); return json(res,await browseFolder()); }
+    if(url.pathname==='/api/project-share') {requireIdle();const project=state.projects.find(p=>p.id===data.id);if(!project)throw new Error('Choose a saved project.');await projectRoot(project.root);return json(res,await enableSharedProgress(project.root,dataDir));}
+    if(url.pathname==='/api/projects-refresh'){requireIdle();catalogStatus=await importCodexProjects(state,codexHome);await save();return json(res,catalogStatus);}
+    if(url.pathname==='/api/project-select'){
+      requireIdle();const project=state.projects.find(p=>p.id===data.id);if(!project)throw new Error('Project not found.');await projectRoot(project.root);
+      const opened=selectSavedProject(state,project,newSession,{fresh:data.fresh===true});await save();return json(res,{ok:true,sessionId:opened.id});
+    }
+    if(url.pathname==='/api/project-create'){
+      requireIdle();const root=await createProjectFolder(data.parent,data.name);const project=rememberProject(state,root);const opened=selectSavedProject(state,project,newSession);await save();return json(res,{ok:true,root,sessionId:opened.id});
+    }
     if(url.pathname==='/api/project') {
       requireIdle();
       const prompt=data.prompt===undefined?null:promptText(data.prompt);
       const root=await projectRoot(data.path);
-      const opened=newSession(root);
+      const project=rememberProject(state,root);const opened=prompt!==null?newSession(root):selectSavedProject(state,project,newSession,{fresh:data.fresh===true});
       if(prompt!==null) {
         opened.title='Open '+path.basename(root);
         opened.messages.push({role:'user',content:prompt,time:new Date().toISOString()},{role:'assistant',content:`Opened project: ${root}\n\nThis folder is now active. Project instructions and file contents have not been inspected yet.`,time:new Date().toISOString()});
@@ -265,7 +293,7 @@ const server=http.createServer(async(req,res)=>{
       await save(); return json(res,{ok:true,root,sessionId:opened.id});
     }
     if(url.pathname==='/api/new-chat') { requireIdle(); if(!session) throw new Error('Choose a project first.'); newSession(session.root); await save(); return json(res,{ok:true}); }
-    if(url.pathname==='/api/session') { requireIdle(); if(!state.sessions.some(s=>s.id===data.id)) throw new Error('Chat not found.'); state.activeSessionId=data.id; await save(); return json(res,{ok:true}); }
+    if(url.pathname==='/api/session') { requireIdle(); const chosen=state.sessions.find(s=>s.id===data.id);if(!chosen) throw new Error('Chat not found.');await projectRoot(chosen.root); state.activeSessionId=data.id;const project=rememberProject(state,chosen.root);project.lastSessionId=chosen.id;project.lastOpened=new Date().toISOString();await save(); return json(res,{ok:true}); }
     if(url.pathname==='/api/file') { requireIdle(); if(!session) throw new Error('Choose a project first.'); const result=await workspace(session).write(data.path,data.content,data.hash??null); return json(res,result); }
     if(url.pathname==='/api/undo') { requireIdle(); if(!session) throw new Error('Choose a project first.'); return json(res,await workspace(session).undo(data.id)); }
     if(url.pathname==='/api/approve') {
@@ -286,10 +314,10 @@ const server=http.createServer(async(req,res)=>{
       json(res,{id:task.id});
       const execute=async()=>{
         try {
-          if(isAgent) await runAgent({run:task,session,key:apiKey,config:{...state.config},workspace:ws,approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject:async requested=>{
+          if(isAgent) await runAgent({run:task,session,key:apiKey,config:{...state.config},workspace:ws,contextForRoot:agentContextForRoot,recordProgress:status=>recordProgress(task,ws,session,status),resolveProject:(requested,prompts)=>resolveProjectRequest(requested,prompts,state.projects),approve:(command,reason)=>commandApproval(task,ws,command,reason),openProject:async requested=>{
             const root=await projectRoot(requested);
             const listing=await new Workspace(root,dataDir).list('.',1);
-            ws.root=root;session.root=root;await save();
+            ws.root=root;session.root=root;rememberProject(state,root).lastSessionId=session.id;await save();
             emit(task,'project_changed',{root,mode:commandMode(root)});
             return {root,...listing,instructions:'This root and listing are verified. Read relevant project instructions before making changes. Earlier file references belong to the previous project.'};
           },emit:(type,value)=>emit(task,type,value),save});

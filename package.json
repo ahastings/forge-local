@@ -1,9 +1,9 @@
 {
   "name": "local-api-dev-lab",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "A local Windows coding agent powered by the OpenAI Responses API",
   "engines": { "node": ">=22" },
-  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js", "check": "node --check server.js && node --check public/app.js && node --check public/markdown.js && node --check public/input-limits.js && node --check public/layout.js && node --check public/chat-scroll.js && node --check public/voice-input.js && node --check public/live-transcription.js && node --check public/microphone-meter.js && node --check public/voice-waveform.js && node --check lib/transcription.js && node --check lib/live-transcription.js" }
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js", "check": "node --check server.js && node --check lib/agent.js && node --check lib/projects.js && node --check lib/project-context.js && node --check lib/shared-progress.js && node --check public/project-library.js && node --check public/chat-drafts.js && node --check public/app.js && node --check public/markdown.js && node --check public/input-limits.js && node --check public/layout.js && node --check public/chat-scroll.js && node --check public/voice-input.js && node --check public/live-transcription.js && node --check public/microphone-meter.js && node --check public/voice-waveform.js && node --check lib/transcription.js && node --check lib/live-transcription.js" }
 }

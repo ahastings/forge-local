@@ -11,7 +11,7 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   const base=await fs.mkdtemp(path.join(process.cwd(),'.local-data','http-test-'));
   const project=path.join(base,'project');await fs.mkdir(project);
   const port=4329,origin=`http://127.0.0.1:${port}`;
-  const child=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),FORGE_DATA_DIR:path.join(base,'state'),FORGE_SKIP_ENV_FILE:'1',OPENAI_API_KEY:''},windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const child=spawn(process.execPath,['server.js'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),FORGE_DATA_DIR:path.join(base,'state'),FORGE_CODEX_HOME:path.join(base,'codex'),FORGE_SKIP_ENV_FILE:'1',OPENAI_API_KEY:''},windowsHide:true,stdio:['ignore','pipe','pipe']});
   t.after(()=>child.kill());
   let ready=false;
   for(let attempt=0;attempt<50;attempt++){try{if((await fetch(origin+'/api/health')).ok){ready=true;break;}}catch{}await pause(100);}
@@ -35,6 +35,21 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   assert.equal((await fetch(origin+'/layout.css')).status,200);
   assert.equal((await fetch(origin+'/input-limits.js')).status,200);
   assert.equal((await fetch(origin+'/markdown.js')).status,200);
+  assert.equal((await fetch(origin+'/project-library.js')).status,200);
+  assert.equal((await fetch(origin+'/chat-drafts.js')).status,200);
+  const libraryState=await (await get('state')).json();const libraryProject=libraryState.projects.find(p=>p.root===project);
+  const originalChat=libraryState.activeSessionId;
+  assert.equal((await post('project-select',{id:libraryProject.id})).status,200);
+  assert.equal((await (await get('state')).json()).activeSessionId,originalChat);
+  assert.equal((await post('project-select',{id:libraryProject.id,fresh:true})).status,200);
+  const freshChat=(await (await get('state')).json()).activeSessionId;assert.notEqual(freshChat,originalChat);
+  assert.equal((await post('session',{id:originalChat})).status,200);
+  await fs.writeFile(path.join(project,'.env'),'SAMPLE_SERVICE_KEY=fixture-secret-value\nEMPTY_KEY=\n');
+  const overview=await (await get('project-context?id='+libraryProject.id)).text();assert.match(overview,/SAMPLE_SERVICE_KEY/);assert.doesNotMatch(overview,/fixture-secret-value/);
+  assert.equal((await get('project-context?id=missing')).status,400);
+  assert.equal((await post('project-create',{parent:base,name:'../outside'})).status,400);
+  assert.equal((await post('project-share',{id:libraryProject.id})).status,200);
+  assert.equal((await (await get('project-context?id='+libraryProject.id)).json()).sharedProgress,true);
   assert.equal((await post('voice-session',{sdp:'v=0\nm=audio'},{'X-Forge-Request':''})).status,403);
   assert.match((await (await post('voice-session',{sdp:'v=0\nm=audio'})).json()).error,/API key/);
   const audioPost=(headers={})=>fetch(origin+'/api/transcribe',{method:'POST',headers:{cookie,'X-Forge-Request':'1','Content-Type':'audio/webm',...headers},body:new Uint8Array()});

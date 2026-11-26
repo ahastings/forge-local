@@ -4,14 +4,14 @@ An experimental Windows coding-agent starter for exploring the OpenAI API with y
 
 ## Project status
 
-Early development preview. Fifty-eight automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
+Early development preview. Seventy-one automated checks pass, including project migration, saved chats, shared progress, environment redaction, simulated agent and dictation flows, and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
 
 ## Start
 
 1. Double-click **Start API Dev Lab.cmd** in this folder. Keep its console window open while using the app.
 2. Your browser opens **http://127.0.0.1:4317**. The server listens only on your computer's loopback interface.
 3. Open **Settings**, enter an OpenAI project API key, and save. Use a key from the API organization linked to your free-credit benefit.
-4. Choose a project folder, or try the included **hello-windows** starter.
+4. Choose a saved project from the dropdown. **Projects** opens the library, where you can search Codex folders, add an existing folder, or create a project.
 5. Describe your task. Use the **PowerShell** dropdown above the chat to choose **Ask each time** or **Automatic**. The choice is saved separately for each project folder.
 
 Node.js 22 or newer and Windows PowerShell 5.1 are required. Node.js 24 was already installed on the computer used to build and test this app. There are no npm dependencies and no npm install step.
@@ -22,11 +22,23 @@ From a terminal you can also run `npm start`. Set `PORT` in an ignored `.env` fi
 
 ## First task
 
-Open the included starter project and try:
+Select an empty project folder and try:
 
 > Build a responsive task tracker with plain HTML, CSS, and JavaScript. Save tasks in browser localStorage. Add instructions for launching it on Windows. Verify the JavaScript syntax.
 
 The agent inspects files, makes edits, requests commands, and uses command results to continue working. You can inspect files in the editor, make your own edits, start a fresh chat, and return to previous project chats.
+
+## Projects shared with Codex
+
+The project dropdown remembers folders and resumes their last selected Forge chat. **New chat** starts another conversation in that folder. **Projects** opens a searchable library with Overview, Chats, and Environment tabs. Existing chats are grouped under their original folders; the upgrade backs up the old state before migrating it. Unsent drafts are saved separately per chat in this browser.
+
+Forge reads local folder metadata from Codex's project list without modifying that list or Codex's databases. **Refresh Codex projects** discovers folders added later. The default Codex home is `~/.codex`; `CODEX_HOME` or `FORGE_CODEX_HOME` can override it. Unavailable or unsupported project registries leave saved Forge projects usable through **Add existing folder**. Cloud-only projects need a local working folder.
+
+Start a project in Codex, then select that same folder in Forge. Both apps use the original files, so there is no copy to synchronize. If a project was created in Forge, open its folder in Codex once to add it there. Forge does not register new Codex projects or import Codex/ChatGPT transcripts. Chat history, model settings, tools, skills and command permissions remain separate.
+
+The agent automatically receives current documentation and shared `AGENTS.override.md` / `AGENTS.md` guidance: global first, then from the Git root down to the selected folder, up to a combined 32 KiB. Nested instructions must still be read before editing their subtree. Historical Forge notes are labeled as past observations, not current verification. The Environment tab shows variable names and presence from local `.env` files; values are not returned to the browser or model, and presence does not establish authentication, quota, or provider access. Environment files are not copied between projects.
+
+**Enable shared progress** in a project's Overview creates `FORGE-CONTEXT.md` and adds a managed reference to that project's active AGENTS file. Existing instructions and handoff notes are preserved with recoverable file snapshots. Codex is instructed to update Current status after substantive work; Forge records completed tool names, file paths and exit statuses after runs, preserving human notes. It does not copy private chats, command output or environment values into that file. This is a shared handoff document, not simultaneous chat synchronization. Previewing a project alone does not modify its instructions. Current Git changes are read without pull, checkout, commit or push, and returning focus to Forge refreshes files while preserving unsaved edits.
 
 Chat messages accept up to **40,000 characters**, with a live count below the message box. Oversized text stays in your draft and shows a clear error when you try to send it. Typing, pasting, and microphone dictation update the count. PowerShell commands have a separate 20,000-character limit. These are app limits; the overall conversation/context guard and model limits still apply.
 

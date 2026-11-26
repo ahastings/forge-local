@@ -7,13 +7,15 @@ import { ChatScroll } from './chat-scroll.js';
 import { PanelLayout } from './layout.js';
 import { MAX_PROMPT_CHARS, promptText } from './input-limits.js';
 import { markdown } from './markdown.js';
+import {ProjectLibrary} from './project-library.js';
+import {ChatDrafts} from './chat-drafts.js';
 const $ = id => document.getElementById(id);
 let state, activeRun = null, events = null, approval = null, streamBubble = null, file = null, dirty = false, changes = [], toastTimer;
 let goalPresets=[];
 const number = n => new Intl.NumberFormat().format(n || 0);
 const basename = p => p?.split(/[\\/]/).filter(Boolean).at(-1) || 'Choose project';
 async function api(route, data) {
-  if(data!==undefined&&['project','session','new-chat'].includes(route))voice.cancel();
+  if(data!==undefined&&['project','project-select','project-create','session','new-chat'].includes(route))voice.cancel();
   const res = await fetch('/api/'+route,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Forge-Request':'1'},body:JSON.stringify(data)});
   const result = await res.json(); if(!res.ok) throw new Error(result.error || 'Request failed.'); return result;
 }
@@ -22,10 +24,11 @@ function toast(text,error=false) {
 }
 const action = fn => async event => { try { await fn(event); } catch(e) {toast(e.message,true);} };
 const panels=new PanelLayout();
+const drafts=new ChatDrafts();
 const chatScroll=new ChatScroll($('messages'),$('jumpToLatest'));
 const speechDraft=new DictationDraft(),waveform=new VoiceWaveform($('voiceWaveform'));
 let voiceNotice='';
-function updatePromptCount(){const length=$('prompt').value.trim().length,over=length>MAX_PROMPT_CHARS;$('promptCount').textContent=`${number(length)} / ${number(MAX_PROMPT_CHARS)} chars`;$('promptCount').classList.toggle('over-limit',over);$('prompt').setAttribute('aria-invalid',String(over));}
+function updatePromptCount(){const length=$('prompt').value.trim().length,over=length>MAX_PROMPT_CHARS;$('promptCount').textContent=`${number(length)} / ${number(MAX_PROMPT_CHARS)} chars`;$('promptCount').classList.toggle('over-limit',over);$('prompt').setAttribute('aria-invalid',String(over));drafts.save(state?.activeSessionId,$('prompt').value);}
 function applySpeech(result){if(!result)return;$('prompt').value=result.value;updatePromptCount();$('prompt').setSelectionRange(result.caret,result.caret);$('prompt').scrollTop=$('prompt').scrollHeight;}
 function voiceStatus(text){$('voiceStatus').textContent=text;$('composerHint').textContent=text;$('composerHint').title=voiceNotice||text;}
 const voice = new VoiceInput({
@@ -67,10 +70,15 @@ $('voiceButton').addEventListener('click',()=>{
 });
 $('voiceCancel').onclick=()=>voice.cancel();
 if(!voice.supported)voiceStatus('Mic unavailable here · Open this app in Chrome or Edge');
+async function afterProjectChange(clear=true){if(clear)clearEditor();await loadState();await refreshFiles();await refreshChanges();}
+function canChangeProject(){if(activeRun)throw new Error('Wait for the active task or stop it before switching projects.');return canDiscard();}
+async function selectProject(id,fresh=false){if(!canChangeProject())return false;await api('project-select',{id,fresh});await afterProjectChange();return true;}
+async function selectChat(id){if(!canChangeProject())return false;await api('session',{id});await afterProjectChange();return true;}
+const projectLibrary=new ProjectLibrary({api,getState:()=>state,selectProject,selectChat,afterChange:afterProjectChange,beforeChange:canChangeProject,toast,isBusy:()=>!!activeRun});
 function setBusy(value,text) {
   $('runStatus').textContent=text || (value?'Working on your task':'Ready when you are'); $('runDot').classList.toggle('busy',value);
   $('stopButton').classList.toggle('hidden',!value); $('sendButton').classList.toggle('hidden',value);
-  for(const id of ['chooseProject','newChat','composerProject','saveFile','newFile','activeProjectPath']) $(id).disabled=value || (id==='saveFile'&&!file);
+  for(const id of ['chooseProject','projectSwitcher','projectLibraryButton','newChat','composerProject','saveFile','newFile','activeProjectPath']) $(id).disabled=value || (id==='saveFile'&&!file);
 }
 function usage(value) { $('usageText').textContent=`${number(value?.calls)} API calls · ${number((value?.input||0)+(value?.output||0))} tokens`; }
 function selectedGoal(){const session=state?.sessions.find(s=>s.id===state.activeSessionId);return state?.goals?.find(g=>g.id===session?.goalId);}
@@ -135,8 +143,11 @@ function renderMessages(session,{reset=false}={}) {
 }
 async function loadState({render=true}={}) {
   const previousSession=state?.activeSessionId;
-  state=await api('state');if(previousSession&&previousSession!==state.activeSessionId)voice.cancel();
+  drafts.save(previousSession,$('prompt').value);
+  const next=await api('state');if(previousSession&&previousSession!==next.activeSessionId)voice.cancel();state=next;
+  if(previousSession!==state.activeSessionId){$('prompt').value=drafts.get(state.activeSessionId);updatePromptCount();}
   const session=state.sessions.find(s=>s.id===state.activeSessionId);
+  projectLibrary.render(state);
   renderCommandMode(state.commandMode||'ask');
   $('projectName').textContent=session?basename(session.root):'Choose a project';$('projectHint').textContent=session?'Local Windows folder':'A folder on your computer';
   $('composerFolderName').textContent=session?basename(session.root):'Choose project';$('rootPath').textContent=session?.root||'No project selected';$('rootPath').title=session?.root||'';
@@ -144,8 +155,9 @@ async function loadState({render=true}={}) {
   $('taskTitle').textContent=session?.title||'New task'; $('modelLabel').textContent=state.config.model.replace(/^gpt-/,'GPT-').replace(/-sol$/,' Sol').replace(/-terra$/,' Terra');
   $('connectionBanner').classList.toggle('hidden',state.keyConfigured); usage(session?.usage);
   $('sessions').replaceChildren();
-  if(!state.sessions.length){const p=document.createElement('p');p.className='muted small';p.textContent='Your work starts here.';$('sessions').append(p);}
-  for(const s of state.sessions) {
+  const projectChats=state.sessions.filter(s=>s.root.toLowerCase()===session?.root.toLowerCase());
+  if(!projectChats.length){const p=document.createElement('p');p.className='muted small';p.textContent='Start a chat in this project.';$('sessions').append(p);}
+  for(const s of projectChats) {
     const b=document.createElement('button');b.className='session-item'+(s.id===session?.id?' active':'');b.textContent='◦  '+s.title;b.title=s.root;
     b.addEventListener('click',action(async()=>{if(!canDiscard())return;await api('session',{id:s.id});clearEditor();await loadState();await refreshFiles();await refreshChanges();}));$('sessions').append(b);
   }
@@ -203,7 +215,7 @@ function viewDiff(c) {
   if(rows.length>800)$('diffContent').append(document.createTextNode('\nPreview limited to 800 lines. Full snapshots are saved locally.'));
   $('diffDialog').showModal();
 }
-function showProject(){if(activeRun)return toast('Stop the active task before switching projects.',true);$('projectPath').value=state.sessions.find(s=>s.id===state.activeSessionId)?.root||'';$('projectDialog').showModal();}
+function showProject(){projectLibrary.open();}
 function showSettings() {
   $('apiKey').value='';$('model').value=state.config.model;$('effort').value=state.config.effort;$('maxRounds').value=state.config.maxRounds;$('maxOutput').value=state.config.maxOutput;
   $('keyStatus').textContent=state.keyConfigured?'● Key connected · '+state.keySource:'○ No API key connected';$('connectionResult').textContent='';$('settingsDialog').showModal();
@@ -266,11 +278,10 @@ $('goalRun').addEventListener('click',action(async()=>{const goal=selectedGoal()
 $('goalPause').addEventListener('click',action(async()=>{const goal=selectedGoal();if(goal)await api('goal-pause',{id:goal.id});}));
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
 for(const b of document.querySelectorAll('[data-prompt]'))b.onclick=()=>{voice.cancel();$('prompt').value=b.dataset.prompt;updatePromptCount();$('prompt').focus();if(!state.activeSessionId)showProject();};
-$('projectForm').addEventListener('submit',action(async e=>{e.preventDefault();if(!canDiscard())return;await api('project',{path:$('projectPath').value.trim()});$('projectDialog').close();clearEditor();await loadState();await refreshFiles();await refreshChanges();terminal('Project: '+$('projectPath').value.trim());}));
+$('projectForm').addEventListener('submit',action(async e=>{e.preventDefault();if(!canChangeProject())return;await api('project',{path:$('projectPath').value.trim()});projectLibrary.close();await afterProjectChange();terminal('Project: '+$('projectPath').value.trim());}));
 $('projectPathForm').addEventListener('submit',action(async e=>{e.preventDefault();if(activeRun)return toast('Wait for the active task or stop it before switching folders.',true);if(!canDiscard())return;await api('project',{path:$('activeProjectPath').value.trim()});clearEditor();await loadState();await refreshFiles();await refreshChanges();toast('Project folder opened.');}));
 $('browseButton').addEventListener('click',action(async()=>{const b=$('browseButton');b.disabled=true;b.textContent='Choosing…';try{const data=await api('browse',{});if(data.path)$('projectPath').value=data.path;}finally{b.disabled=false;b.textContent='Browse…';}}));
-$('exampleButton').onclick=()=>{$('projectPath').value=state.exampleProject;$('projectForm').requestSubmit();};
-$('newChat').addEventListener('click',action(async()=>{if(!state.activeSessionId)return showProject();await api('new-chat',{});await loadState();$('prompt').focus();}));
+$('newChat').addEventListener('click',action(async()=>{if(!state.activeSessionId)return showProject();if(!canChangeProject())return;await api('new-chat',{});await afterProjectChange();$('prompt').focus();}));
 $('settingsForm').addEventListener('submit',action(async e=>{
   e.preventDefault();await api('settings',{apiKey:$('apiKey').value,model:$('model').value.trim(),effort:$('effort').value,maxRounds:Number($('maxRounds').value),maxOutput:Number($('maxOutput').value)});
   $('apiKey').value='';await loadState({render:false});$('keyStatus').textContent=state.keyConfigured?'● Key connected · '+state.keySource:'○ No API key connected';toast('Settings saved.');$('settingsDialog').close();
@@ -302,6 +313,7 @@ $('terminalForm').addEventListener('submit',action(async e=>{e.preventDefault();
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('newChat').click();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(file)$('saveFile').click();}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&voice.active){e.preventDefault();voice.cancel();}});
 window.addEventListener('pagehide',()=>voice.cancel());
+window.addEventListener('focus',action(async()=>{if(!state||activeRun)return;await refreshFiles();if(file&&!dirty)await openFile(file.path,{force:true});if($('projectDialog').open&&projectLibrary.selected)await projectLibrary.preview(projectLibrary.selected);}));
 window.addEventListener('beforeunload',e=>{voice.cancel();if(dirty){e.preventDefault();e.returnValue='';}});
 $('prompt').addEventListener('input',updatePromptCount);updatePromptCount();
 loadState().then(()=>Promise.all([refreshFiles(),refreshChanges()])).catch(e=>toast('Could not connect to API Dev Lab: '+e.message,true));
