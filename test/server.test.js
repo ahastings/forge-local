@@ -34,6 +34,7 @@ test('local HTTP app protects routes and supports explicit, automatic, and per-p
   assert.equal((await fetch(origin+'/layout.js')).status,200);
   assert.equal((await fetch(origin+'/layout.css')).status,200);
   assert.equal((await fetch(origin+'/input-limits.js')).status,200);
+  assert.equal((await fetch(origin+'/markdown.js')).status,200);
   assert.equal((await post('voice-session',{sdp:'v=0\nm=audio'},{'X-Forge-Request':''})).status,403);
   assert.match((await (await post('voice-session',{sdp:'v=0\nm=audio'})).json()).error,/API key/);
   const audioPost=(headers={})=>fetch(origin+'/api/transcribe',{method:'POST',headers:{cookie,'X-Forge-Request':'1','Content-Type':'audio/webm',...headers},body:new Uint8Array()});

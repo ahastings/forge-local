@@ -4,7 +4,7 @@ An experimental Windows coding-agent starter for exploring the OpenAI API with y
 
 ## Project status
 
-Early development preview. Fifty-one automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
+Early development preview. Fifty-eight automated checks pass, including simulated agent and dictation flows and real Windows file, command, encryption, and HTTP checks. Automated API integration tests use simulated responses; model access and billing depend on your account. A separate browser integration check recorded generated speech, transcribed it through the live OpenAI API, appended the text to a draft and verified control cleanup. The app tests API access; it cannot verify your free-credit balance or enforce free-credit-only spending.
 
 ## Start
 
@@ -41,6 +41,8 @@ Use **Files & changes** to show or hide the editor and **×** inside it to close
 ## Reading streamed answers
 
 The conversation follows new text while you are at the bottom. Scrolling up with the wheel, scrollbar, keyboard, or touch pauses that behavior, so additional words and tool results do not move your reading position. Finishing an answer also preserves the position when the conversation redraws. Click **Jump to latest** or scroll back down to the bottom to resume following. Opening another chat starts at its latest messages.
+
+Markdown tables display as bordered columns with header rows, wrapped text, bold and inline code. Wide tables scroll sideways inside the response and can be focused for keyboard scrolling. Tables render while the answer streams, and sideways reading positions are preserved as more text arrives. Existing saved replies also use this rendering when opened. Table text is handled as text rather than executable HTML.
 
 ## Open projects from chat
 

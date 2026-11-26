@@ -6,6 +6,7 @@ import { VoiceWaveform } from './voice-waveform.js';
 import { ChatScroll } from './chat-scroll.js';
 import { PanelLayout } from './layout.js';
 import { MAX_PROMPT_CHARS, promptText } from './input-limits.js';
+import { markdown } from './markdown.js';
 const $ = id => document.getElementById(id);
 let state, activeRun = null, events = null, approval = null, streamBubble = null, file = null, dirty = false, changes = [], toastTimer;
 let goalPresets=[];
@@ -102,21 +103,9 @@ async function setCommandMode(mode) {
     toast(result.mode==='auto'?'PowerShell runs automatically for this project. Commands use your Windows account permissions.':'PowerShell will ask before each command.');
   } catch(error) { renderCommandMode(previous);throw error; }
 }
-function inline(parent,text) {
-  const parts=text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-  for(const part of parts) {
-    if(part.startsWith('`')&&part.endsWith('`')) {const c=document.createElement('code');c.textContent=part.slice(1,-1);parent.append(c);}
-    else if(part.startsWith('**')&&part.endsWith('**')) {const b=document.createElement('strong');b.textContent=part.slice(2,-2);parent.append(b);}
-    else parent.append(document.createTextNode(part));
-  }
-}
-function markdown(parent,text) {
-  parent.replaceChildren();const pieces=text.split(/```[^\n]*\n([\s\S]*?)(?:```|$)/g);
-  pieces.forEach((part,i)=>{
-    if(i%2) {const pre=document.createElement('pre'),code=document.createElement('code');code.textContent=part.replace(/\n$/,'');pre.append(code);parent.append(pre);}
-    else for(const paragraph of part.split(/\n\n+/).filter(Boolean)) {const p=document.createElement('p');inline(p,paragraph.replace(/^#{1,6} /gm,''));parent.append(p);}
-  });
-}
+let streamFrame=null;
+function cancelStreamRender(){if(streamFrame!==null)cancelAnimationFrame(streamFrame);streamFrame=null;}
+function renderStream(){if(streamFrame!==null)return;streamFrame=requestAnimationFrame(()=>{streamFrame=null;if(streamBubble)chatScroll.update(()=>markdown(streamBubble.body,streamBubble.text));});}
 function message(role,text) {
   const row=document.createElement('article');row.className='message '+role;
   const heading=document.createElement('div');heading.className='message-heading';
@@ -135,10 +124,12 @@ function toolResult(row,result,root,command) {
 }
 function toolLine(text,error=false,result=null,root='',command='') {const el=document.createElement('div');el.className='tool-row'+(error?' error':'');el.textContent=text;toolResult(el,result,root,command);chatScroll.update(()=>$('messages').append(el));return el;}
 function renderMessages(session,{reset=false}={}) {
+  const tableOffsets=reset?[]:[...$('messages').querySelectorAll('.markdown-table')].map(table=>table.scrollLeft);
   const render=()=>{
   if(!session?.messages.length) { $('welcome').classList.remove('hidden'); for(const row of [...$('messages').children]) if(row.id!=='welcome')row.remove();return; }
   $('welcome').classList.add('hidden');for(const row of [...$('messages').children])if(row.id!=='welcome')row.remove();
   for(const m of session.messages) {if(m.role==='tool'){const row=toolLine(m.content,!!m.error,m.result,m.root,m.command);if(m.id)row.dataset.toolId=m.id;}else message(m.role,m.content);}
+  [...$('messages').querySelectorAll('.markdown-table')].forEach((table,index)=>{table.scrollLeft=tableOffsets[index]||0;});
   };
   if(reset)chatScroll.reset(render);else chatScroll.update(render);
 }
@@ -219,12 +210,12 @@ function showSettings() {
 }
 function terminal(text) {const el=$('terminalOutput');el.textContent=(el.textContent+'\n'+text).slice(-70000);el.scrollTop=el.scrollHeight;}
 function connectRun(id) {
-  activeRun=id;setBusy(true);streamBubble=null;
+  cancelStreamRender();activeRun=id;setBusy(true);streamBubble=null;
   if(events)events.close();events=new EventSource('/api/events?id='+encodeURIComponent(id));
   const on=(type,fn)=>events.addEventListener(type,event=>{try{fn(JSON.parse(event.data));}catch(e){toast(e.message,true);}});
   on('status',data=>setBusy(true,data.text));
-  on('delta',data=>chatScroll.update(()=>{if(!streamBubble)streamBubble=message('assistant','');streamBubble.text+=data.text;streamBubble.body.textContent=streamBubble.text;}));
-  on('message',data=>chatScroll.update(()=>{if(streamBubble){streamBubble.text=data.text;markdown(streamBubble.body,data.text);}else message('assistant',data.text);streamBubble=null;}));
+  on('delta',data=>{if(!streamBubble)streamBubble=message('assistant','');streamBubble.text+=data.text;renderStream();});
+  on('message',data=>{cancelStreamRender();chatScroll.update(()=>{if(streamBubble){streamBubble.text=data.text;markdown(streamBubble.body,data.text);}else message('assistant',data.text);streamBubble=null;});});
   on('tool',data=>{const details=data.args?.path||data.args?.query||data.args?.reason||'';const row=toolLine('› '+data.name.replaceAll('_',' ')+'  '+details);row.dataset.toolId=data.id;row.dataset.command=data.args?.command||'';});
   on('tool_result',data=>{const row=[...document.querySelectorAll('[data-tool-id]')].find(el=>el.dataset.toolId===data.id);if(row)toolResult(row,data.result,$('activeProjectPath').value,row.dataset.command);if(data.result?.error)toolLine(data.result.error,true);if(data.name==='run_powershell'&&data.result?.denied)terminal('Command declined.');});
   on('approval',data=>{approval=data;$('approvalReason').textContent=data.reason;$('approvalCommand').textContent=data.command;$('approvalCwd').textContent=data.cwd;$('approval').classList.remove('hidden');terminal('\nPS > '+data.command);setBusy(true,'Waiting for your command approval');});
@@ -243,7 +234,7 @@ function connectRun(id) {
   on('change',()=>{refreshFiles().catch(()=>{});refreshChanges().catch(()=>{});});
   on('error',data=>{if(data?.text){toolLine(data.text,true);toast(data.text,true);}});
   on('done',async data=>{
-    events.close();events=null;activeRun=null;approval=null;streamBubble=null;$('approval').classList.add('hidden');setBusy(false,data.status==='complete'?'Task complete':data.status==='stopped'?'Stopped':'Task ended');
+    cancelStreamRender();events.close();events=null;activeRun=null;approval=null;streamBubble=null;$('approval').classList.add('hidden');setBusy(false,data.status==='complete'?'Task complete':data.status==='stopped'?'Stopped':'Task ended');
     try {await loadState();await refreshFiles();await refreshChanges();if(file&&!dirty)try{await openFile(file.path,{force:true});}catch{} }catch(e){toast(e.message,true);}
     $('runStatus').textContent=data.status==='complete'?'Task complete':data.status==='stopped'?'Stopped':'Task ended';
   });
